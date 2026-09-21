@@ -1,0 +1,44 @@
+.pressure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8);
+  border-top: var(--hairline);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.pressure__label {
+  color: var(--text-2);
+}
+
+.pressure__track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.pressure__fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width var(--motion-base) var(--ease-standard);
+}
+
+/* Single amber hue, stepped light -> dark by magnitude (sequential, one hue). */
+.pressure__fill--calm {
+  background: #ffe08a;
+}
+.pressure__fill--moderate {
+  background: #ffc64d;
+}
+.pressure__fill--high {
+  background: var(--warn);
+}
+
+.pressure__detail {
+  color: var(--text-2);
+  white-space: nowrap;
+}

@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "id": "personal-list", "title": "Personal" },
+    { "id": "work-list", "title": "Work" }
+  ],
+  "nextPageToken": "lists-page-2"
+}

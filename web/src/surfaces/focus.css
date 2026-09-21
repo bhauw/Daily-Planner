@@ -1,0 +1,207 @@
+/*
+ * Focus surface. One lead card, then grouped rows. The lead card is the only
+ * loud thing on the screen — that is the point of the surface.
+ */
+
+.focus {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.focus__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-12);
+  max-width: 720px;
+  width: 100%;
+}
+
+/* ----- Lead card ----- */
+
+.lead {
+  position: relative;
+  padding: var(--space-12) var(--space-12) var(--space-10) var(--space-16);
+  background: var(--surface);
+  border: var(--hairline-strong);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+/* The accent edge carries the category colour without tinting the whole card. */
+.lead::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--lead-accent, var(--accent));
+}
+
+.lead__eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.lead__title {
+  margin-top: var(--space-3);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.015em;
+  line-height: var(--leading-tight);
+}
+
+.lead__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.lead__kind {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lead__reason {
+  color: var(--text);
+}
+
+.lead__time {
+  color: var(--text-2);
+}
+
+.lead__detail {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+/* ----- Grouped remainder ----- */
+
+.focus__rest {
+  margin-top: var(--space-12);
+}
+
+.focus__group + .focus__group {
+  margin-top: var(--space-10);
+}
+
+.focus__grouphead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 var(--space-5) var(--space-3);
+  border-bottom: var(--hairline);
+}
+
+.focus__groupcount {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+/* ----- Pressable row ----- */
+
+.focus__row {
+  border-top: var(--hairline);
+}
+
+.focus__row:last-of-type {
+  border-bottom: var(--hairline);
+}
+
+.focus__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  cursor: default;
+  list-style: none;
+}
+
+.focus__summary::-webkit-details-marker {
+  display: none;
+}
+
+.focus__summary:hover {
+  background: var(--surface);
+}
+
+.focus__summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* The row's own chip and body, laid out for a <summary> rather than a div. */
+.focus__summary .item__chip {
+  align-self: stretch;
+  min-height: 26px;
+}
+
+.focus__summary .item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.focus__summary .item__meta {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.focus__summary .item__time {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.focus__caret {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  display: flex;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.focus__row[open] .focus__caret {
+  transform: rotate(90deg);
+}
+
+.focus__actions {
+  padding: 0 var(--space-5) var(--space-6) calc(var(--space-5) + 3px + var(--space-5));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus__caret {
+    transition: none;
+  }
+}
+
+.focus__kind {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.focus__detail {
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}

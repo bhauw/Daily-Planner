@@ -1,0 +1,19 @@
+.DS_Store
+.build/
+DerivedData/
+.worktrees/
+.superpowers/
+*.xcuserstate
+*.client-secret.json
+.spike-secrets/
+Artifacts/private/
+
+
+# Web UI build artifacts and dependencies
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Fleet run artifacts (task files are kept; logs and locks are not)
+.claude-fleet/*.log
+.claude-fleet/.build-lock/

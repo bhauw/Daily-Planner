@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id": "task-due",
+      "title": "Submit expense report",
+      "notes": "Use the synthetic receipt totals.",
+      "due": "2026-09-12T00:00:00.000Z",
+      "updated": "2026-09-10T16:30:00.123Z",
+      "status": "needsAction"
+    },
+    {
+      "id": "task-undated",
+      "title": "Book focus room",
+      "updated": "2026-09-10T17:00:00Z",
+      "status": "needsAction"
+    },
+    {
+      "id": "task-completed",
+      "title": "Archive planning notes",
+      "updated": "2026-09-10T18:00:00Z",
+      "status": "completed"
+    }
+  ],
+  "nextPageToken": "tasks-page-2"
+}

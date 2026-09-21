@@ -1,0 +1,85 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 28px;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.btn:hover {
+  background: var(--surface);
+}
+
+.btn:active {
+  background: var(--chrome);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn--primary:hover {
+  background: #2b93ff;
+  border-color: #2b93ff;
+}
+.btn--primary:active {
+  background: #0a76e6;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.btn--ghost:hover {
+  background: var(--surface);
+}
+
+/* Sizes. md meets the 44x44 target through the touch-target expansion below. */
+.btn--md {
+  min-height: 32px;
+}
+.btn--sm {
+  min-height: 26px;
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-xs);
+}
+
+/* Keep small/compact buttons hit-friendly without inflating their visual box. */
+.btn {
+  position: relative;
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 50% 0 0 50%;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.btn--icon {
+  padding: var(--space-3);
+  min-width: 32px;
+}
+
+.btn__text {
+  display: inline-block;
+}

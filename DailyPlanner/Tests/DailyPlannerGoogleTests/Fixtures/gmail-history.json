@@ -1,0 +1,16 @@
+{
+  "historyId": "102",
+  "nextPageToken": "history-page-2",
+  "history": [
+    {
+      "messagesAdded": [
+        { "message": { "id": "message-one" } }
+      ]
+    },
+    {
+      "messagesDeleted": [
+        { "message": { "id": "message-two" } }
+      ]
+    }
+  ]
+}

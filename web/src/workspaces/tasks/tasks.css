@@ -1,0 +1,658 @@
+/*
+ * Tasks workspace styles. Semantic + component tokens only — no raw hex, and no
+ * category colour re-declared (chips, accents and the compose rail take their
+ * colour inline from presentationFor / listColorVar). SF Mono (.num) is reserved
+ * for times, counts, due dates and durations so the gutters and figures align.
+ *
+ * Layout: a quick-capture band on top, then a two-column grid — the five list
+ * columns (a horizontally scrollable row, each column scrolling independently)
+ * and the focus-block dayline on the right.
+ */
+
+.tasks {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.tasks__loading {
+  padding: var(--space-16) var(--space-8);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+/* ---- Top band: header + quick capture ---- */
+
+.tasks__bar {
+  border-bottom: var(--hairline);
+  flex: none;
+}
+
+.tasks__grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+}
+
+.tasks__lists {
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.tasks__lists::-webkit-scrollbar {
+  height: 10px;
+}
+.tasks__lists::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 3px solid var(--bg);
+}
+
+.tasks__timeline {
+  border-left: var(--hairline);
+  min-height: 0;
+  height: 100%;
+}
+
+/* ============================================================================
+ * List columns
+ * ==========================================================================*/
+
+.tasklists {
+  display: flex;
+  gap: var(--space-4);
+  height: 100%;
+  min-width: max-content; /* columns keep their width; the row scrolls instead */
+  padding: var(--space-6) var(--space-8);
+}
+
+.tasklist {
+  position: relative;
+  flex: none;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+  border: var(--hairline);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* A thin top accent carries the list's category colour (bound inline). */
+.tasklist__accent {
+  height: 3px;
+  width: 100%;
+  flex: none;
+}
+
+.tasklist .colhead {
+  padding: var(--space-5) var(--space-6) var(--space-3);
+}
+
+.tasklist__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-5);
+}
+/* An empty column fills its height so the invitation sits centred, not stranded. */
+.tasklist__body .state {
+  min-height: 0;
+  padding: var(--space-12) var(--space-5);
+}
+
+/* ============================================================================
+ * Task card
+ * ==========================================================================*/
+
+.task {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: var(--space-3);
+  padding: var(--card-pad);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+.task[draggable="true"] {
+  cursor: grab;
+}
+.task[draggable="true"]:active {
+  cursor: grabbing;
+}
+.task--done {
+  opacity: 0.6;
+}
+
+.task__grip {
+  color: var(--text-3);
+  padding-top: 2px;
+}
+
+.task__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.task__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.task__due {
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.task__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  line-height: var(--leading-tight);
+}
+.task--done .task__title {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-3);
+}
+
+/* The linked focus block — the product's answer to Google's date-only tasks. */
+.task__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+}
+.task__link-text {
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+.task__link-tag {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+/* Pending move proposal on the card. */
+.task__proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+}
+.task__proposal-text {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.task__proposal-status {
+  font-size: var(--text-2xs);
+  color: var(--warn);
+}
+.task__proposal-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.task__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.task__move {
+  display: inline-flex;
+  min-width: 0;
+}
+.task__move-select,
+.compose__select {
+  min-height: 36px;
+  padding: var(--space-2) var(--space-5);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.task__move-select {
+  max-width: 130px;
+}
+
+/* ============================================================================
+ * Quick capture
+ * ==========================================================================*/
+
+.capture {
+  padding: var(--space-5) var(--space-8) var(--space-6);
+}
+
+.capture__bar {
+  display: flex;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+.capture__field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.capture__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: var(--space-4) var(--space-6);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-md);
+}
+.capture__input::placeholder {
+  color: var(--text-2);
+}
+
+.capture__hint {
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+}
+kbd {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.capture__proposals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  max-height: 42vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  background: var(--surface);
+  border: var(--hairline);
+  border-radius: var(--radius-md);
+}
+.proposal__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+.proposal__title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+.proposal__status {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.proposal__status.is-pending {
+  color: var(--warn);
+}
+.proposal__status.is-approved {
+  color: var(--cat-extracurricular);
+}
+.proposal__status.is-rejected {
+  color: var(--text-2);
+}
+
+.proposal__facts {
+  display: flex;
+  gap: var(--space-8);
+  margin: 0;
+}
+.proposal__fact dt {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-bottom: var(--space-1);
+}
+.proposal__fact dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.proposal__why-head {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-bottom: var(--space-3);
+}
+.proposal__reasons {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.proposal__reasons li {
+  position: relative;
+  padding-left: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: var(--leading-normal);
+}
+.proposal__reasons li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.proposal__followup {
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+.proposal__followup legend {
+  padding: 0 var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--touch-min);
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.proposal__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.proposal__note,
+.blockcard__hint {
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+}
+
+.capture__log {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.capture__log-row,
+.timeblock__log-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+}
+.capture__log-text,
+.timeblock__log-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capture__log-dismiss,
+.timeblock__log-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  font-size: var(--text-lg);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.capture__log-dismiss:hover,
+.timeblock__log-dismiss:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* ============================================================================
+ * Time-blocking pane
+ * ==========================================================================*/
+
+.timeblock {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeblock__head {
+  padding: var(--space-7) var(--space-8) var(--space-4);
+}
+.timeblock__eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-bottom: var(--space-2);
+}
+.timeblock__title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+.timeblock__lede {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: var(--leading-normal);
+}
+.timeblock__lede kbd {
+  white-space: nowrap;
+}
+
+.timeblock__dayline {
+  position: relative;
+  border-radius: var(--radius-md);
+  transition: box-shadow var(--motion-base) var(--ease-standard);
+}
+.timeblock__dayline.is-over {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.timeblock__dropcue {
+  position: absolute;
+  inset: var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  pointer-events: none;
+  background: var(--accent-soft);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.timeblock__proposals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8) var(--space-8);
+}
+
+.timeblock__log {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ---- Compose form (the keyboard path to a block) ---- */
+
+.compose {
+  margin: 0 var(--space-8) var(--space-4);
+  padding: var(--space-6);
+  background: var(--surface);
+  border: var(--hairline);
+  border-left: 3px solid var(--border); /* overridden inline with the category */
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.compose__eyebrow {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--warn);
+  margin-bottom: var(--space-2);
+}
+.compose__task {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+.compose__note {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  line-height: var(--leading-normal);
+}
+.compose__fields {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.compose__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 96px;
+}
+.compose__field span {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.compose__preview {
+  font-size: var(--text-sm);
+  color: var(--text);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.compose__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* ---- A single proposed / approved block, in full ---- */
+
+.blockcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  background: var(--surface);
+  border: var(--hairline);
+  border-radius: var(--radius-md);
+}
+.blockcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+.blockcard__task {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+.blockcard__facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4) var(--space-8);
+  margin: 0;
+}
+.blockcard__fact dt {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-bottom: var(--space-1);
+}
+.blockcard__fact dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.blockcard__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* Detached: full-bleed, the shell wraps us in a DetachedFrame with only the
+ * safety rail on top. Nothing extra required — the flex column already fills. */
+.tasks--detached {
+  height: 100%;
+}

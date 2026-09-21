@@ -1,0 +1,7 @@
+{
+  "messages": [
+    { "id": "message-one", "threadId": "thread-one" },
+    { "id": "message-two", "threadId": "thread-two" }
+  ],
+  "nextPageToken": "next-page"
+}

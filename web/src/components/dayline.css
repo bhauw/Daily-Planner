@@ -1,0 +1,55 @@
+.dayline-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.dayline {
+  padding: var(--space-2) var(--space-8) var(--space-8);
+}
+
+.slot {
+  display: grid;
+  grid-template-columns: var(--dayline-gutter) 1fr;
+  gap: var(--space-5);
+  min-height: 38px;
+}
+
+.slot__hr {
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  padding-top: 9px;
+  text-align: right;
+}
+
+.slot__lane {
+  border-top: var(--hairline);
+  padding: var(--space-3) 0;
+  position: relative;
+}
+
+.blk {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  border-left: 3px solid;
+  background: var(--surface);
+}
+
+.blk__title {
+  color: var(--text);
+}
+
+.blk__sub {
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  margin-top: 1px;
+}
+
+.blk--free {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-left: 1px dashed var(--border);
+  color: var(--text-2);
+  font-weight: var(--weight-regular);
+}

@@ -1,0 +1,30 @@
+{
+  "id": "message-one",
+  "threadId": "thread-one",
+  "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+  "snippet": "Your monthly statement is ready.",
+  "internalDate": "1788112800000",
+  "historyId": "100",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      { "name": "From", "value": "Billing <billing@example.test>" },
+      { "name": "Subject", "value": "Monthly statement" }
+    ],
+    "parts": [
+      {
+        "mimeType": "text/html",
+        "body": { "data": "PHA-SFRoaXMgaXMgSFRNTC48L3A-" }
+      },
+      {
+        "mimeType": "text/plain",
+        "body": { "data": "UGxhaW4gdGV4dCBib2R5Lg" }
+      },
+      {
+        "mimeType": "application/pdf",
+        "filename": "statement.pdf",
+        "body": { "size": 345, "attachmentId": "attachment-id-must-not-escape" }
+      }
+    ]
+  }
+}

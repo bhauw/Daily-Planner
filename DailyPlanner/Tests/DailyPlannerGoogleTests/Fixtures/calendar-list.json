@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": "reference@example.test",
+      "summary": "Primary",
+      "primary": false,
+      "accessRole": "reader"
+    },
+    {
+      "id": "primary@example.test",
+      "summary": "Personal",
+      "primary": true,
+      "accessRole": "owner"
+    }
+  ]
+}
