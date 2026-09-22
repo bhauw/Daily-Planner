@@ -20,16 +20,30 @@ import { describe, expect, it } from "vitest";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { CreateEventRequest, CreateEventResponse, SendMailRequest, SendMailResponse } from "../api/client";
+import type {
+  CreateEventRequest,
+  CreateEventResponse,
+  DraftReplyRequest,
+  DraftReplyResponse,
+  MoveEventRequest,
+  SendMailRequest,
+  SendMailResponse,
+} from "../api/client";
 import { WriteDeskProvider, useWriteDesk } from "./WriteDesk";
 
-const capability = { canSend: true, canSchedule: true };
+const capability = { canSend: true, canSchedule: true, canReschedule: true, canDraft: false };
 
 const client = {
   sendMail: async (_request: SendMailRequest): Promise<SendMailResponse> => {
     throw new Error("not used");
   },
   createEvent: async (_request: CreateEventRequest): Promise<CreateEventResponse> => {
+    throw new Error("not used");
+  },
+  moveEvent: async (_request: MoveEventRequest): Promise<CreateEventResponse> => {
+    throw new Error("not used");
+  },
+  draftReply: async (_request: DraftReplyRequest): Promise<DraftReplyResponse> => {
     throw new Error("not used");
   },
 };
@@ -66,6 +80,7 @@ async function mount(): Promise<Mounted> {
       createElement(WriteDeskProvider, {
         capability,
         client,
+        assist: undefined,
         children: createElement(Background),
       }),
     );

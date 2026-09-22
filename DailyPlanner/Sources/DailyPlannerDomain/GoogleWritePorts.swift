@@ -245,6 +245,45 @@ public protocol PlannerEventScheduling: Sendable {
     func create(_ draft: PlannerEventDraft) async throws -> PlannerScheduledEvent
 }
 
+/// A request to move an event that already exists: same event, new times.
+///
+/// Deliberately narrow. It carries an identity and an interval and nothing else, so there is no
+/// field on it capable of renaming an event, changing its guests or clearing its description —
+/// not because the caller is trusted to leave them alone, but because they are not here to set.
+/// "Move" is the only edit this app performs on something the user already has.
+public struct PlannerEventMove: Hashable, Sendable {
+    /// The provider's id for the event being moved. Opaque; it came from a read.
+    public let eventID: String
+    /// The calendar the event lives on. An event cannot be patched on a calendar it is not on,
+    /// so unlike a draft this is not optional-with-a-default — guessing `primary` here would
+    /// mean a confident 404 at best and touching the wrong event at worst.
+    public let calendarID: CalendarID
+    public let start: Date
+    public let end: Date
+
+    public init(eventID: String, calendarID: CalendarID, start: Date, end: Date) throws {
+        guard end > start, end.timeIntervalSince(start) <= PlannerEventDraft.maxDuration else {
+            throw PlannerWriteError.invalidInterval
+        }
+        self.eventID = try PlannerOutgoingMail.validatedIdentifier(eventID)
+        // The calendar id travels in a path segment, so it gets the identifier rule too: no
+        // control characters, no slash, no percent, nothing that could reshape the URL.
+        _ = try PlannerOutgoingMail.validatedIdentifier(calendarID.rawValue)
+        self.calendarID = calendarID
+        self.start = start
+        self.end = end
+    }
+}
+
+/// Moves one existing calendar event. Absent when the grant cannot write.
+///
+/// A separate port from `PlannerEventScheduling` on purpose: creating something new and editing
+/// something the user already has are different permissions to reason about, and keeping them
+/// apart means a composition can offer one without the other.
+public protocol PlannerEventRescheduling: Sendable {
+    func move(_ move: PlannerEventMove) async throws -> PlannerScheduledEvent
+}
+
 extension PlannerWriteError: PlannerWriteFailure {
     /// Every case here is the message itself being wrong, which no amount of retrying fixes.
     public var writeOutcome: PlannerWriteOutcome { .refused }

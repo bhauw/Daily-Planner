@@ -9,11 +9,17 @@ public enum GoogleCalendarWriteClientError: Error, Equatable, CaseIterable, Send
     case malformedResponse
 }
 
-/// Creates one event through `POST /calendar/v3/calendars/{id}/events`.
+/// Creates one event through `POST /calendar/v3/calendars/{id}/events`, and moves an existing
+/// one through `PATCH /calendar/v3/calendars/{id}/events/{eventId}`.
 ///
-/// Insert only. There is no update and no delete here, and no `sendUpdates` parameter — mailing
-/// an event's attendees is a separate decision and `GoogleNetworkPolicy` refuses any query on a
+/// Insert and move. There is still no delete here, and no `sendUpdates` parameter — mailing an
+/// event's attendees is a separate decision and `GoogleNetworkPolicy` refuses any query on a
 /// write, so it cannot be reached from this path even by mistake.
+///
+/// The move is a PATCH carrying `start` and `end` and nothing else. Google applies a patch
+/// field by field, so everything this app does not know about the event — its guests, its
+/// description, its recurrence, its colour — survives untouched precisely because the body
+/// never mentions them.
 public struct GoogleCalendarWriteClient: Sendable {
     public let transport: any GoogleHTTPTransport
 
@@ -46,6 +52,31 @@ public struct GoogleCalendarWriteClient: Sendable {
         }
     }
 
+    public func move(
+        _ move: PlannerEventMove,
+        accessToken: GoogleAccessToken
+    ) async throws -> PlannerScheduledEvent {
+        do {
+            try Task.checkCancellation()
+            let url = try Self.patchURL(calendarID: move.calendarID, eventID: move.eventID)
+            let body = try Self.requestBody(for: move)
+            let request = try GoogleRequestBuilder.patchJSON(
+                url: url, accessToken: accessToken, body: body
+            )
+            let response = try await transport.send(request)
+            switch response.statusCode {
+            case 200...299:
+                return try Self.decode(response.data, fallback: move)
+            case 400, 401, 403, 404, 409, 429:
+                throw GoogleCalendarWriteClientError.refused
+            default:
+                throw GoogleCalendarWriteClientError.providerUnavailable
+            }
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
     /// `primary` when no calendar was named — the account's own calendar, which is the one a
     /// planner should write to by default.
     static func insertURL(calendarID: CalendarID?) throws -> URL {
@@ -54,6 +85,20 @@ public struct GoogleCalendarWriteClient: Sendable {
         components.scheme = "https"
         components.host = "www.googleapis.com"
         components.percentEncodedPath = "/calendar/v3/calendars/\(segment)/events"
+        guard let url = components.url else { throw GoogleCalendarWriteClientError.malformedResponse }
+        return url
+    }
+
+    /// Unlike the insert URL there is no `primary` fallback: a move names the calendar the
+    /// event is actually on, because patching an id against the wrong calendar is not a
+    /// harmless miss.
+    static func patchURL(calendarID: CalendarID, eventID: String) throws -> URL {
+        let calendar = try encodedPathSegment(calendarID.rawValue)
+        let event = try encodedPathSegment(eventID)
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.googleapis.com"
+        components.percentEncodedPath = "/calendar/v3/calendars/\(calendar)/events/\(event)"
         guard let url = components.url else { throw GoogleCalendarWriteClientError.malformedResponse }
         return url
     }
@@ -89,6 +134,21 @@ public struct GoogleCalendarWriteClient: Sendable {
         return data
     }
 
+    /// Two keys, and only two. A patch body is a list of the fields to change, so the shortness
+    /// of this function is the safety property, not an omission to be filled in later.
+    static func requestBody(for move: PlannerEventMove) throws -> Data {
+        let payload: [String: Any] = [
+            "start": ["dateTime": RFC3339.string(from: move.start)],
+            "end": ["dateTime": RFC3339.string(from: move.end)],
+        ]
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes]
+        ) else {
+            throw GoogleCalendarWriteClientError.malformedResponse
+        }
+        return data
+    }
+
     private struct Wire: Decodable {
         struct Stamp: Decodable { let dateTime: String? }
         let id: String
@@ -108,6 +168,20 @@ public struct GoogleCalendarWriteClient: Sendable {
             id: wire.id,
             start: wire.start?.dateTime.flatMap(RFC3339.date(from:)) ?? draft.start,
             end: wire.end?.dateTime.flatMap(RFC3339.date(from:)) ?? draft.end,
+            link: wire.htmlLink
+        )
+    }
+
+    /// Same rule as the insert: prefer the times Google echoes back over the ones requested,
+    /// so the user is told what is actually on their calendar.
+    static func decode(_ data: Data, fallback move: PlannerEventMove) throws -> PlannerScheduledEvent {
+        guard let wire = try? JSONDecoder().decode(Wire.self, from: data), !wire.id.isEmpty else {
+            throw GoogleCalendarWriteClientError.malformedResponse
+        }
+        return PlannerScheduledEvent(
+            id: wire.id,
+            start: wire.start?.dateTime.flatMap(RFC3339.date(from:)) ?? move.start,
+            end: wire.end?.dateTime.flatMap(RFC3339.date(from:)) ?? move.end,
             link: wire.htmlLink
         )
     }

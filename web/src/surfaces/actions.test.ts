@@ -19,10 +19,11 @@ import {
   type ActionCapability,
 } from "./actions";
 
-const CAN_WRITE: ActionCapability = { canSend: true, canSchedule: true };
+const CAN_WRITE: ActionCapability = { canSend: true, canSchedule: true, canReschedule: true };
 
 const event: PlannerEvent = {
   id: "e1",
+  calendarId: "primary",
   title: "ECON 295 · Managerial Economics",
   category: "school",
   kind: "event",
@@ -175,6 +176,35 @@ describe("no action is ever a dead end", () => {
     const move = eventActions(event, CAN_WRITE).find((a) => a.id === "reschedule")!;
     expect(move.schedule!.start).toBe(event.start);
     expect(move.schedule!.end).toBe(event.end);
+  });
+
+  /*
+   * The bug this route was built for: "Move it" INSERTED a second event with the same details
+   * and left the original where it was — on a real calendar. These pin the three states apart.
+   */
+  it("moves the event in place when the engine can reschedule", () => {
+    const action = eventActions(event, CAN_WRITE).find((a) => a.id === "reschedule")!;
+    expect(action.label).toBe("Move it");
+    expect(action.schedule!.move).toEqual({ eventId: event.id, calendarId: event.calendarId });
+  });
+
+  it("does not claim to move when the engine has no move route", () => {
+    // An engine built before the route existed answers falsy here. The action must stay
+    // useful, but it must stop saying "Move it" — it adds a block, and it says so.
+    const createOnly: ActionCapability = { canSend: true, canSchedule: true, canReschedule: false };
+    const action = eventActions(event, createOnly).find((a) => a.id === "reschedule")!;
+    expect(action.schedule!.move).toBeUndefined();
+    expect(action.label).not.toBe("Move it");
+    expect(action.schedule!.context).toMatch(/original stays/i);
+  });
+
+  it("does not offer a move for something that is not on a calendar yet", () => {
+    // A proposed focus block has no provider id to patch. Moving it would 404, or worse,
+    // patch whatever event happened to share the id.
+    const local = { ...event, calendarId: "" };
+    const action = eventActions(local, CAN_WRITE).find((a) => a.id === "reschedule")!;
+    expect(action.schedule!.move).toBeUndefined();
+    expect(action.label).not.toBe("Move it");
   });
 
   it("gives every write action somewhere to go when the app cannot do it in-house", () => {

@@ -15,37 +15,57 @@ import type { Category, EventKind, PlannerEvent } from "../api/client";
 export interface CategoryPresentation {
   label: string;
   tag: string; // short uppercase tag for the meta row
-  colorVar: string; // e.g. "var(--cat-school)"
+  colorVar: string; // e.g. "var(--cat-school)" — the MARK: borders, chips, left rules
+  /**
+   * The same category as INK, for text.
+   *
+   * Two of the mark colours do not clear 4.5:1 as small text on the lightest surface the app
+   * paints — school blue lands at 3.83:1 and personal magenta at 4.45:1 — and `.tag` renders
+   * this as 10px type. Same split as `--accent` and `--accent-text`: the mark keeps the brand
+   * hue, the ink is lifted until it is readable. Defaults to `colorVar` for the categories
+   * that already pass, so this is never a second palette to maintain.
+   */
+  inkVar: string;
+}
+
+/** Ink defaults to the mark; only the two that fail contrast override it. */
+function present(label: string, tag: string, colorVar: string, inkVar = colorVar): CategoryPresentation {
+  return { label, tag, colorVar, inkVar };
 }
 
 export function presentationFor(event: Pick<PlannerEvent, "category" | "kind">): CategoryPresentation {
   if (event.kind === "extracurricular") {
-    return { label: "Extracurricular", tag: "EXTRA", colorVar: "var(--cat-extracurricular)" };
+    return present("Extracurricular", "EXTRA", "var(--cat-extracurricular)");
   }
   if (event.category === "school" && event.kind === "deadline") {
-    return { label: "School deadline", tag: "DEADLINE", colorVar: "var(--cat-deadline)" };
+    return present("School deadline", "DEADLINE", "var(--cat-deadline)");
   }
   switch (event.category) {
     case "school":
-      return { label: "School", tag: "SCHOOL", colorVar: "var(--cat-school)" };
+      return present("School", "SCHOOL", "var(--cat-school)", "var(--cat-school-ink)");
     case "career":
-      return { label: "Career", tag: "CAREER", colorVar: "var(--cat-career)" };
+      return present("Career", "CAREER", "var(--cat-career)");
     case "finance":
-      return { label: "Finance", tag: "FINANCE", colorVar: "var(--cat-finance)" };
+      return present("Finance", "FINANCE", "var(--cat-finance)");
     case "personal":
-      return { label: "Personal", tag: "PERSONAL", colorVar: "var(--cat-personal)" };
+      return present("Personal", "PERSONAL", "var(--cat-personal)", "var(--cat-personal-ink)");
     case "commute":
-      return { label: "Commute", tag: "COMMUTE", colorVar: "var(--cat-commute)" };
+      return present("Commute", "COMMUTE", "var(--cat-commute)");
     case "work":
-      return { label: "Work", tag: "WORK", colorVar: "var(--cat-work)" };
+      return present("Work", "WORK", "var(--cat-work)");
     case "other":
     default:
-      return { label: "Other", tag: "OTHER", colorVar: "var(--cat-other)" };
+      return present("Other", "OTHER", "var(--cat-other)");
   }
 }
 
 export function colorForCategory(category: Category): string {
   return presentationFor({ category, kind: "event" }).colorVar;
+}
+
+/** The category as readable text. Use this anywhere the colour IS the type. */
+export function inkForCategory(category: Category): string {
+  return presentationFor({ category, kind: "event" }).inkVar;
 }
 
 export function kindLabel(kind: EventKind): string {

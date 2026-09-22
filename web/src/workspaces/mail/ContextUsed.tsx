@@ -7,7 +7,7 @@
  * there is nothing here to leak. It states that plainly to the user, too.
  */
 
-import { Tag, colorForCategory } from "../contract";
+import { Tag, inkForCategory } from "../contract";
 import type { ContextUsedData } from "./data";
 
 interface ContextUsedProps {
@@ -43,7 +43,7 @@ export function ContextUsed({ context }: ContextUsedProps) {
           <ul className="ctx__notes-list">
             {context.vaultNotes.map((v) => (
               <li key={v.category} className="ctx__note">
-                <Tag label={categoryLabel(v.category)} colorVar={colorForCategory(v.category)} />
+                <Tag label={categoryLabel(v.category)} colorVar={inkForCategory(v.category)} />
                 <span className="num ctx__note-count">{v.count}</span>
               </li>
             ))}

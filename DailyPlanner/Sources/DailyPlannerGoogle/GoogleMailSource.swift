@@ -83,17 +83,48 @@ public struct GoogleMailSource: PlannerMailReading, Sendable {
             summary: isPrivate ? "Hidden — this message is marked private." : summary.snippet,
             sender: summary.sender,
             receivedAt: summary.receivedAt,
-            category: category(forLabels: summary.labels),
+            category: category(for: summary),
             isPrivate: isPrivate,
+            isUnread: summary.labels.contains { $0.uppercased() == "UNREAD" },
+            isBulk: isBulk(labels: summary.labels),
             // Opaque by design, unwrapped here on the same sanctioned path as `id`. It goes no
             // further than the loopback UI and back to Gmail on a reply.
             threadID: summary.threadID.withUnsafeRawValue { $0 }
         )
     }
 
-    /// Gmail labels are user-defined, so only an explicit match assigns a category. Anything
-    /// unrecognised stays `.other` rather than being guessed into someone's planning.
-    static func category(forLabels labels: [String]) -> PlannerCategory {
+    /// Gmail's own bucketing. These are system labels, not user ones, so matching them exactly
+    /// is safe in a way that matching a user's label text is not.
+    ///
+    /// `CATEGORY_UPDATES` is deliberately NOT here. Gmail files a great deal of real mail under
+    /// it — receipts, course announcements, application status changes — and hiding that would
+    /// lose exactly the messages this surface exists to find.
+    static func isBulk(labels: [String]) -> Bool {
+        let bulk: Set<String> = ["SPAM", "CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "TRASH"]
+        return labels.contains { bulk.contains($0.uppercased()) }
+    }
+
+    /// What a message is about.
+    ///
+    /// A user label wins when there is one — an explicit choice always outranks a guess. Almost
+    /// no inbox is fully labelled, though, and the previous behaviour was to call everything
+    /// `.other`, which collapsed the whole priority order into one undifferentiated pile. So
+    /// when there is no label, the sender and the subject are read for a small number of high
+    /// confidence signals.
+    ///
+    /// The signals are deliberately few. Each one is something that is almost never a
+    /// coincidence; a longer list would classify more mail and be wrong about more of it, and
+    /// being wrong here means burying a midterm notice under a newsletter.
+    static func category(for summary: GmailMessageSummary) -> PlannerCategory {
+        if let labelled = category(forLabels: summary.labels) { return labelled }
+        if let inferred = inferredCategory(sender: summary.sender, subject: summary.subject) {
+            return inferred
+        }
+        return .other
+    }
+
+    /// An explicit user label, or nil when none of them says anything.
+    static func category(forLabels labels: [String]) -> PlannerCategory? {
         for label in labels {
             switch label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "school", "classes", "academics": return .school
@@ -104,6 +135,74 @@ public struct GoogleMailSource: PlannerMailReading, Sendable {
             default: continue
             }
         }
-        return .other
+        return nil
+    }
+
+    static func inferredCategory(sender: String, subject: String) -> PlannerCategory? {
+        let from = sender.lowercased()
+        let text = MailTriagePolicy.normalized(subject)
+
+        // A course code in the subject — "ECON 250", "ECON 295", "INDG 101". This is the
+        // strongest signal on a student's inbox and it needs no list of institutions.
+        if containsCourseCode(subject) { return .school }
+
+        // Institutional senders. `.edu` plus the Canadian universities' own domains, since a
+        // `.ca` university does not use `.edu`.
+        let schoolHosts = ["sfu.ca", "university.example", "bcit.ca", "ufv.ca", "douglascollege.ca",
+                           "langara.ca", "kpu.ca", "instructure.com", "canvaslms.com"]
+        if from.contains(".edu") || schoolHosts.contains(where: from.contains) { return .school }
+
+        let careerHosts = ["greenhouse.io", "lever.co", "myworkday.com", "workday.com",
+                           "smartrecruiters.com", "icims.com", "taleo.net", "linkedin.com",
+                           "indeed.com", "handshake.com", "joinhandshake.com"]
+        if careerHosts.contains(where: from.contains) { return .career }
+
+        let financeHosts = ["rbc.com", "td.com", "scotiabank.com", "cibc.com", "bmo.com",
+                            "tangerine.ca", "wealthsimple.com", "questrade.com", "paypal.com",
+                            "cra-arc.gc.ca", "interac.ca"]
+        if financeHosts.contains(where: from.contains) { return .finance }
+
+        // Subject-side fallbacks, whole-word matched through the triage normaliser.
+        for phrase in ["application", "internship", "co op", "coop", "recruiting", "offer letter"]
+        where MailTriagePolicy.contains(text, phrase) {
+            return .career
+        }
+        for phrase in ["tuition", "invoice", "statement", "receipt", "payment"]
+        where MailTriagePolicy.contains(text, phrase) {
+            return .finance
+        }
+        return nil
+    }
+
+    /// Two to four letters, a space or not, then exactly three digits: "ECON 250", "COMM295".
+    /// Requires the letters to be upper-case, which is how course codes are written and which
+    /// keeps it from firing on ordinary prose.
+    static func containsCourseCode(_ subject: String) -> Bool {
+        let scalars = Array(subject.unicodeScalars)
+        var index = 0
+        while index < scalars.count {
+            guard CharacterSet.uppercaseLetters.contains(scalars[index]),
+                  index == 0 || !CharacterSet.alphanumerics.contains(scalars[index - 1]) else {
+                index += 1
+                continue
+            }
+            var cursor = index
+            var letters = 0
+            while cursor < scalars.count, CharacterSet.uppercaseLetters.contains(scalars[cursor]) {
+                letters += 1
+                cursor += 1
+            }
+            guard (2...4).contains(letters) else { index = cursor + 1; continue }
+            if cursor < scalars.count, scalars[cursor] == " " { cursor += 1 }
+            var digits = 0
+            while cursor < scalars.count, CharacterSet.decimalDigits.contains(scalars[cursor]) {
+                digits += 1
+                cursor += 1
+            }
+            let ends = cursor >= scalars.count || !CharacterSet.alphanumerics.contains(scalars[cursor])
+            if digits == 3, ends { return true }
+            index = max(cursor, index + 1)
+        }
+        return false
     }
 }

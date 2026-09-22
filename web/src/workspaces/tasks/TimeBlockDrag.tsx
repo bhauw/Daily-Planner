@@ -18,13 +18,22 @@
  * time — the task never does.
  */
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import type { Category, PlannerEvent } from "../contract";
 import { Dayline, Button, EmptyState, formatLongDay, presentationFor } from "../contract";
 import type { BlockProposal } from "./machine";
 import { statusLabel } from "./machine";
 import { isoAt } from "./data";
+import {
+  chooseGap,
+  describePlacement,
+  gapsFor,
+  placementFor,
+  MIN_BLOCK_MIN,
+  type Gap,
+  type Placement,
+} from "./insertion";
 import { ClockIcon, CheckIcon } from "./icons";
 
 /** The task a compose form is currently proposing a block for. */
@@ -34,6 +43,8 @@ export interface ComposeTarget {
   category: Category;
   listName: string;
   startMin: number;
+  /** The length the drop's gap can hold — the compose form opens on it. */
+  durationMin: number;
 }
 
 interface TimeBlockDragProps {
@@ -43,8 +54,11 @@ interface TimeBlockDragProps {
   calendars: string[];
   windowStart: number;
   windowEnd: number;
-  /** A task was dropped on the dayline at this start-minute — open compose. */
-  onDropStart: (startMin: number) => void;
+  /**
+   * A task was dropped into a gap on the dayline — open compose on the time
+   * that gap supplies, not on the time under the cursor.
+   */
+  onDropStart: (startMin: number, durationMin: number) => void;
   onCommit: (startMin: number, durationMin: number, calendar: string) => void;
   onCancel: () => void;
   onResolve: (id: string, status: "approved" | "rejected") => void;
@@ -59,6 +73,10 @@ function blockEvents(blocks: BlockProposal[]): PlannerEvent[] {
     .filter((b) => b.status !== "rejected")
     .map((b) => ({
       id: `blk-${b.id}`,
+      // A proposed focus block is local — it is not on any calendar yet, so there is no id to
+      // move it by. An empty string is what `canMove` tests for, so the row offers "add a
+      // block" rather than a move that has nothing to patch.
+      calendarId: "",
       title: `Focus: ${b.taskTitle}${b.status === "pending" ? " — proposed" : ""}`,
       category: b.category,
       kind: "event" as const,
@@ -83,26 +101,72 @@ export function TimeBlockDrag({
   onRemove,
 }: TimeBlockDragProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [over, setOver] = useState(false);
+  const [insert, setInsert] = useState<{ placement: Placement; top: number } | null>(null);
 
   const events = [...schedule, ...blockEvents(blocks)];
   const active = blocks.filter((b) => b.status !== "rejected");
   const rejected = blocks.filter((b) => b.status === "rejected");
 
-  function startFromDrop(clientY: number): number {
+  // The day's free intervals. Recomputed only when the day changes, not per
+  // dragover event — a drag fires these continuously.
+  const gapKey = events.map((e) => `${e.id}:${e.start}:${e.end ?? ""}`).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const gaps = useMemo(() => gapsFor(events, windowStart, windowEnd), [gapKey, windowStart, windowEnd]);
+
+  /**
+   * Where a gap's insertion line is drawn: at the TOP of the block it precedes,
+   * or below the last block when it trails the day. Measured off the rendered
+   * rows rather than computed from a time, because the dayline is a list of
+   * rows of varying height — a proportional position would point at the wrong
+   * block. Returns a Y in the wrapper's own coordinates.
+   */
+  function anchorFor(gap: Gap): number | null {
     const el = wrapRef.current;
-    if (!el) return windowStart;
+    if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-    const raw = windowStart + ratio * (windowEnd - windowStart);
-    const snapped = Math.round(raw / 30) * 30;
-    return Math.min(windowEnd - 30, Math.max(windowStart, snapped));
+    if (gap.beforeId != null) {
+      const row = el.querySelector(`[data-event-id="${CSS.escape(gap.beforeId)}"]`);
+      if (row) return (row as HTMLElement).getBoundingClientRect().top - rect.top;
+    }
+    const rows = el.querySelectorAll("[data-event-id]");
+    const last = rows[rows.length - 1] as HTMLElement | undefined;
+    if (last) return last.getBoundingClientRect().bottom - rect.top;
+    return 0;
+  }
+
+  /** The gap the pointer is nearest, resolved to one that can actually hold a block. */
+  function placementAt(clientY: number): { placement: Placement; top: number } | null {
+    const el = wrapRef.current;
+    if (!el || gaps.length === 0) return null;
+    const y = clientY - el.getBoundingClientRect().top;
+
+    let nearest = gaps[0];
+    let best = Infinity;
+    for (const gap of gaps) {
+      const anchor = anchorFor(gap);
+      if (anchor == null) continue;
+      const d = Math.abs(anchor - y);
+      if (d < best) {
+        best = d;
+        nearest = gap;
+      }
+    }
+
+    // The nearest gap may be too small to take a block; chooseGap walks outward
+    // to one that fits, and the line follows it so the cue never promises a
+    // slot the drop will not use.
+    const gap = chooseGap(gaps, nearest.index, MIN_BLOCK_MIN);
+    if (!gap) return null;
+    const top = anchorFor(gap);
+    return top == null ? null : { placement: placementFor(gap), top };
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
-    setOver(false);
-    onDropStart(startFromDrop(e.clientY));
+    const at = insert ?? placementAt(e.clientY);
+    setInsert(null);
+    if (!at) return;
+    onDropStart(at.placement.startMin, at.placement.durationMin);
   }
 
   return (
@@ -112,13 +176,14 @@ export function TimeBlockDrag({
         <h3 className="timeblock__title">Block time for a task</h3>
         <p className="timeblock__lede">
           A task keeps only a due date. To give it timed work, place it on the day as a linked focus
-          block — drag a card here, or press <kbd className="num">Block time</kbd> on it.
+          block — drag a card into a gap between two blocks and it takes that gap's time, or press{" "}
+          <kbd className="num">Block time</kbd> on it.
         </p>
       </div>
 
       {compose && (
         <ComposeForm
-          key={`${compose.taskId}-${compose.startMin}`}
+          key={`${compose.taskId}-${compose.startMin}-${compose.durationMin}`}
           target={compose}
           calendars={calendars}
           windowStart={windowStart}
@@ -130,25 +195,40 @@ export function TimeBlockDrag({
 
       <div
         ref={wrapRef}
-        className={["timeblock__dayline", over ? "is-over" : ""].filter(Boolean).join(" ")}
+        className={["timeblock__dayline", insert ? "is-over" : ""].filter(Boolean).join(" ")}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
-          if (!over) setOver(true);
+          const at = placementAt(e.clientY);
+          setInsert((prev) =>
+            prev && at && prev.top === at.top && prev.placement.startMin === at.placement.startMin
+              ? prev
+              : at,
+          );
         }}
         onDragLeave={(e) => {
           // Only clear when the pointer truly left the drop zone, not on child enter.
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false);
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setInsert(null);
         }}
         onDrop={onDrop}
       >
         <Dayline events={events} windowStart={windowStart} windowEnd={windowEnd} />
-        {over && (
-          <div className="timeblock__dropcue" aria-hidden="true">
-            <ClockIcon size={16} />
-            <span>Drop to propose a focus block</span>
+        {insert && (
+          <div
+            className="timeblock__insert"
+            style={{ top: `${insert.top}px` }}
+            data-testid="insert-cue"
+            aria-hidden="true"
+          >
+            <span className="timeblock__insert-label num">
+              <ClockIcon size={14} />
+              {describePlacement(insert.placement)}
+            </span>
           </div>
         )}
+        <div className="sr-only" role="status" aria-live="polite">
+          {insert ? describePlacement(insert.placement) : ""}
+        </div>
       </div>
 
       <section className="timeblock__proposals" aria-label="Proposed focus blocks">
@@ -199,12 +279,16 @@ interface ComposeFormProps {
 
 function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCancel }: ComposeFormProps) {
   const [startMin, setStartMin] = useState(target.startMin);
-  const [durationMin, setDurationMin] = useState(60);
+  // The drop's gap decides the opening length; a gap shorter than an hour opens
+  // on what it can actually hold rather than on a default that overruns it.
+  const [durationMin, setDurationMin] = useState(target.durationMin);
   const [calendar, setCalendar] = useState(
     calendars.includes(target.listName) ? target.listName : calendars[0] ?? target.listName,
   );
 
   const starts = startOptions(windowStart, windowEnd);
+  // A gap's length is rarely one of the round numbers, so offer it alongside them.
+  const durations = durationOptions(target.durationMin);
   const endMin = Math.min(windowEnd, startMin + durationMin);
   const p = presentationFor({ category: target.category, kind: "event" });
 
@@ -248,7 +332,7 @@ function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCa
             value={durationMin}
             onChange={(e) => setDurationMin(Number(e.target.value))}
           >
-            {DURATIONS.map((d) => (
+            {durations.map((d) => (
               <option key={d} value={d}>
                 {d} min
               </option>
@@ -337,6 +421,12 @@ function BlockCard({ block, onResolve }: { block: BlockProposal; onResolve: (id:
 }
 
 // ---- time helpers (minutes-from-midnight, presentation only) -----------------
+
+/** The round durations, plus the gap's own length when it is not one of them. */
+function durationOptions(gapMin: number): number[] {
+  const out = DURATIONS.includes(gapMin) ? [...DURATIONS] : [...DURATIONS, gapMin];
+  return out.sort((a, b) => a - b);
+}
 
 function startOptions(windowStart: number, windowEnd: number): number[] {
   const out: number[] = [];

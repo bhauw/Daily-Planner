@@ -65,7 +65,7 @@ export function TaskCard({
 
       <div className="task__body">
         <div className="task__top">
-          <Tag label={p.tag} colorVar={p.colorVar} />
+          <Tag label={p.tag} colorVar={p.inkVar} />
           <span className="num task__due">
             {task.done ? "Done" : dueLabel ?? "No due date"}
           </span>

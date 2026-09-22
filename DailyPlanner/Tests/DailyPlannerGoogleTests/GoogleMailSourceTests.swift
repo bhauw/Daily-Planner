@@ -98,15 +98,106 @@ final class GoogleMailSourceTests: XCTestCase {
         XCTAssertEqual(item.summary, "Room change")
     }
 
-    func testLabelsMapToCategoriesAndUnknownStaysOther() {
+    func testLabelsMapToCategoriesAndUnknownYieldsNoAnswer() {
         XCTAssertEqual(GoogleMailSource.category(forLabels: ["Career"]), .career)
         XCTAssertEqual(GoogleMailSource.category(forLabels: ["INBOX", "school"]), .school)
         XCTAssertEqual(GoogleMailSource.category(forLabels: ["Work"]), .work)
-        XCTAssertEqual(
-            GoogleMailSource.category(forLabels: ["INBOX", "IMPORTANT"]), .other,
-            "an unrecognised label must not be guessed into a planning category"
+        XCTAssertNil(
+            GoogleMailSource.category(forLabels: ["INBOX", "IMPORTANT"]),
+            "an unrecognised label must not be read as a category"
         )
-        XCTAssertEqual(GoogleMailSource.category(forLabels: []), .other)
+        XCTAssertNil(GoogleMailSource.category(forLabels: []))
+    }
+
+    // MARK: - Working out what a message is about
+
+    func testAnExplicitLabelAlwaysBeatsAGuess() throws {
+        // Break caught: inference overrules the user. A label is a choice they made; every
+        // signal below it is the app guessing.
+        let summary = try summary(
+            id: "m1", subject: "ECON 250 midterm", sender: "recruiting@greenhouse.io",
+            labels: ["Finance"]
+        )
+        XCTAssertEqual(GoogleMailSource.category(for: summary), .finance)
+    }
+
+    func testACourseCodeInTheSubjectMeansSchool() {
+        // The strongest signal on a student's inbox, and it needs no list of institutions.
+        for subject in ["ECON 250 midterm moved", "Re: COMM295 group", "INDG 101 — Assignment 3",
+                        "[ECON 250] room change", "Fwd: CMPT 300 lab"] {
+            XCTAssertTrue(
+                GoogleMailSource.containsCourseCode(subject),
+                "must read as a course code: \(subject)"
+            )
+        }
+    }
+
+    func testThingsThatLookLikeCourseCodesButAreNot() {
+        // Break caught: the parser fires on ordinary mail. Each of these has letters near
+        // digits and none of them is a course.
+        for subject in [
+            "Order 12345 confirmed",          // digits, no letter run
+            "Save 20% on BUS fares",          // letters, digits not adjacent
+            "RE: 251",                        // no letters immediately before
+            "ABCDE 251 is not a course",      // five letters, too many
+            "A 251 single letter",            // one letter, too few
+            "ECONOMICS 250 is four digits",   // four digits
+            "ECONOMICS 250 is two digits",    // two digits
+            "lowercase bus 251",              // course codes are written upper-case
+            "BUS251X trailing letter",        // does not end at the digits
+        ] {
+            XCTAssertFalse(
+                GoogleMailSource.containsCourseCode(subject),
+                "must NOT read as a course code: \(subject)"
+            )
+        }
+    }
+
+    func testSenderDomainsCarryTheCategoriesTheyObviouslyCarry() {
+        let cases: [(String, PlannerCategory)] = [
+            ("registrar@sfu.ca", .school),
+            ("noreply@instructure.com", .school),
+            ("advisor@someschool.edu", .school),
+            ("no-reply@greenhouse.io", .career),
+            ("jobs@myworkday.com", .career),
+            ("alerts@rbc.com", .finance),
+            ("service@paypal.com", .finance),
+        ]
+        for (sender, expected) in cases {
+            XCTAssertEqual(
+                GoogleMailSource.inferredCategory(sender: sender, subject: "Hello"), expected,
+                "\(sender) should read as \(expected)"
+            )
+        }
+    }
+
+    func testAnUnknownSenderStaysUnclassifiedRatherThanGuessed() {
+        // Break caught: the inference becomes confident about mail it knows nothing about.
+        // `nil` here becomes `.other`, which is the honest answer.
+        XCTAssertNil(GoogleMailSource.inferredCategory(sender: "contact@example.test", subject: "Hi"))
+        XCTAssertEqual(
+            GoogleMailSource.category(for: try! summary(id: "m1", subject: "Hi", sender: "contact@example.test")),
+            .other
+        )
+    }
+
+    // MARK: - Gmail's own bucketing
+
+    func testPromotionsSocialAndSpamAreBulkButUpdatesAreNot() {
+        // CATEGORY_UPDATES holds receipts, course announcements and application status changes.
+        // Treating it as bulk would hide exactly what this surface exists to find.
+        XCTAssertTrue(GoogleMailSource.isBulk(labels: ["INBOX", "CATEGORY_PROMOTIONS"]))
+        XCTAssertTrue(GoogleMailSource.isBulk(labels: ["CATEGORY_SOCIAL"]))
+        XCTAssertTrue(GoogleMailSource.isBulk(labels: ["SPAM"]))
+        XCTAssertFalse(GoogleMailSource.isBulk(labels: ["INBOX", "CATEGORY_UPDATES"]))
+        XCTAssertFalse(GoogleMailSource.isBulk(labels: ["INBOX", "IMPORTANT"]))
+    }
+
+    func testUnreadIsReadFromTheProvidersOwnLabel() throws {
+        let unread = GoogleMailSource.item(from: try summary(id: "m1", labels: ["INBOX", "UNREAD"]))
+        XCTAssertTrue(unread.isUnread)
+        let read = GoogleMailSource.item(from: try summary(id: "m2", labels: ["INBOX"]))
+        XCTAssertFalse(read.isUnread)
     }
 
     func testTriageNeverRequestsAMessageBody() async throws {

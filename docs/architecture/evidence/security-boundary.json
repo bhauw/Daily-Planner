@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 3,
+  "recordedAt": "2026-08-30",
+  "scope": {
+    "input": "generated temporary fake vault containing one synthetic daily note",
+    "privateInputsUsed": false,
+    "shellInterpolationUsedForCodex": false,
+    "applicationInstalled": false,
+    "codexOutputPolicy": "Only an exact ASCII numeric dotted version is retained; all other output is discarded and represented by a finite status."
+  },
+  "tests": {
+    "command": "swift test --package-path Spikes/SecurityBoundaryProbe --scratch-path <temporary-directory> --no-parallel",
+    "status": "PASS",
+    "executed": 15,
+    "failures": 0
+  },
+  "signedVariants": [
+    {
+      "name": "unsandboxed",
+      "signature": "ad-hoc",
+      "entitlements": [],
+      "signatureValidation": "PASS",
+      "result": {
+        "variant": "unsandboxed",
+        "bookmark": {
+          "save": "passed",
+          "resolveRead": "passed",
+          "move": "passed",
+          "staleResolveRead": "passed",
+          "firstFailureStage": "none"
+        },
+        "keychainRoundTrip": true,
+        "codexLaunchResult": {
+          "status": "version",
+          "version": "0.151.0"
+        },
+        "cleanupSucceeded": true
+      }
+    },
+    {
+      "name": "sandboxed",
+      "signature": "ad-hoc",
+      "entitlements": [
+        "com.apple.security.app-sandbox",
+        "com.apple.security.files.user-selected.read-write",
+        "com.apple.security.network.client"
+      ],
+      "signatureValidation": "PASS",
+      "result": {
+        "variant": "sandboxed",
+        "bookmark": {
+          "save": "failed",
+          "resolveRead": "notAttempted",
+          "move": "notAttempted",
+          "staleResolveRead": "notAttempted",
+          "firstFailureStage": "save"
+        },
+        "keychainRoundTrip": true,
+        "codexLaunchResult": {
+          "status": "launchFailed"
+        },
+        "cleanupSucceeded": true
+      },
+      "interpretation": "The automated no-panel run failed at bookmark save, so resolve/read, move, and stale resolution were not attempted. No sandbox-denial cause is inferred from a later stage. The direct Codex attempt returned the finite launchFailed status. Entitlements were not widened."
+    }
+  ],
+  "cleanupProof": {
+    "exactKeychainServiceAccountsAbsent": [
+      "unsandboxed",
+      "sandboxed"
+    ],
+    "temporaryArtifactDirectoriesRemaining": 0,
+    "interactivePrivateArtifactsDeleted": true,
+    "panelTemporaryArtifactDirectoriesRemaining": 0,
+    "status": "PASS"
+  },
+  "interactiveEvidence": [
+    {
+      "check": "unsandboxed NSOpenPanel fake-vault grant and persisted-bookmark relaunch",
+      "status": "PASS",
+      "selectionValidation": "validated",
+      "bookmarkSave": "passed",
+      "freshProcessResolveRead": "passed",
+      "bookmarkDeleted": true,
+      "exactSyntheticKeychainItemAbsent": true
+    },
+    {
+      "check": "sandboxed NSOpenPanel fake-vault grant and persisted-bookmark relaunch",
+      "status": "PASS",
+      "selectionValidation": "validated",
+      "bookmarkSave": "passed",
+      "freshProcessResolveRead": "passed",
+      "bookmarkDeleted": true,
+      "exactSyntheticKeychainItemAbsent": true
+    },
+    {
+      "check": "Keychain readability while macOS is locked",
+      "status": "BLOCKED_BY_USER_ACTION",
+      "requiredAction": "Run Scripts/run-lock-state-check.sh, follow its prompt to lock and unlock the Mac once; the script deletes the exact synthetic item and boolean artifact."
+    }
+  ],
+  "distributionRuling": {
+    "currentProof": "Both signed variants passed exact user-selected fake-vault bookmark save and fresh-process resolve/read. The unsandboxed automated variant also passed move, stale resolution, and a whitelisted direct Codex version result. The sandboxed no-panel bookmark save and direct Codex launch remain failed observations without inferred causes.",
+    "recommendation": "For the approved personal local v1, use one unsandboxed native app with its compensating controls. Defer a sandboxed main app and separately installed helper to a new v2 feasibility design.",
+    "rejectedVariantCost": "The selected unsandboxed v1 has broader filesystem, subprocess, and network reach than its application policies. A sandboxed v1 without a proven helper cannot provide the required direct Codex workflow."
+  }
+}

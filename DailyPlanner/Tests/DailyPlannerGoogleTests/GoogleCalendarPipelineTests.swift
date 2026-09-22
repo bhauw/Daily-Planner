@@ -11,7 +11,7 @@ import DailyPlannerDomain
 /// decoder that rejected ordinary provider payloads passed both suites while the shipped app
 /// showed an empty calendar. Every event below is a shape a real account returns.
 final class GoogleCalendarPipelineTests: XCTestCase {
-    private let calendarID = CalendarID(rawValue: "calendar@example.test")
+    private let calendarID = CalendarID(rawValue: "braxton@example.test")
 
     private struct FakeTokens: GoogleAccessTokenProviding {
         func accessToken() async throws -> GoogleAccessToken {
@@ -51,7 +51,7 @@ final class GoogleCalendarPipelineTests: XCTestCase {
         // and requiring it was what emptied the calendar.
         let calendars = json([
             "items": [
-                ["id": "calendar@example.test", "summary": "calendar@example.test",
+                ["id": "braxton@example.test", "summary": "braxton@example.test",
                  "primary": true, "accessRole": "owner"],
             ],
         ])
@@ -95,7 +95,7 @@ final class GoogleCalendarPipelineTests: XCTestCase {
 
     func testAPageThatDecodesToNothingIsAnEmptyDayRatherThanAFailure() async throws {
         let calendars = json(["items": [
-            ["id": "calendar@example.test", "summary": "cal", "primary": true, "accessRole": "owner"],
+            ["id": "braxton@example.test", "summary": "cal", "primary": true, "accessRole": "owner"],
         ]])
         let events = json(["items": []])
 
@@ -115,7 +115,7 @@ final class GoogleCalendarPipelineTests: XCTestCase {
     /// contain no padding, which is why the suite stayed green while the real account failed.
     func testAPaddedSyncTokenIsAcceptedBecauseThatIsWhatGoogleSends() async throws {
         let calendars = json(["items": [
-            ["id": "calendar@example.test", "summary": "cal", "primary": true, "accessRole": "owner"],
+            ["id": "braxton@example.test", "summary": "cal", "primary": true, "accessRole": "owner"],
         ]])
         let events = json([
             "items": [[

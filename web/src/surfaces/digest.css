@@ -11,17 +11,48 @@
   flex-direction: column;
 }
 
-.digest__scroll {
-  flex: 1;
+/*
+ * The mail list is its own scroll region, and the header is not in it.
+ *
+ * This was one scroller for the whole surface, so reading down the inbox pushed the date and
+ * the workload line off the top — the two things worth still being able to see while deciding
+ * whether a reply can wait. Three bands now: a pinned header, the list, and the day's load.
+ *
+ * `min-height: 0` on both scrollers is load-bearing. A flex child's default minimum is its
+ * content, so without it neither pane shrinks and the page grows a scrollbar of its own — which
+ * is exactly the behaviour being removed.
+ */
+.digest__mail {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-12);
+  overscroll-behavior: contain;
+  padding: var(--space-12) var(--space-12) var(--space-10);
   max-width: 720px;
   width: 100%;
 }
 
+/*
+ * The day's load. Bounded so a long inbox cannot push it off-screen and a long schedule cannot
+ * squeeze the inbox out: it takes at most 40% of the surface and scrolls within that.
+ */
+.digest__load {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 40%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-12) var(--space-12);
+  max-width: 720px;
+  width: 100%;
+  border-top: var(--hairline);
+}
+
 .digest__head {
-  padding-bottom: var(--space-10);
+  flex: 0 0 auto;
+  padding: var(--space-12) var(--space-12) var(--space-10);
+  max-width: 720px;
+  width: 100%;
   border-bottom: var(--hairline);
 }
 
@@ -183,4 +214,30 @@
   .drow__caret {
     transition: none;
   }
+}
+
+/*
+ * The override badge. Only the four kinds of message that jump the category order carry one,
+ * so its presence is the signal — a badge on every row would make the jump invisible again.
+ *
+ * --warn rather than --accent: this is "look at this before the others", which is not the same
+ * thing as "this is the primary action", and the accent already means the latter everywhere.
+ */
+.drow__badge {
+  display: inline-block;
+  margin-right: var(--space-4);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--warn);
+  color: #1a1206; /* fixed dark ink: --warn is a light amber, same as the sample badge */
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+/* Against the load pane's top hairline, the first section's usual gap is too much. */
+.digest__load > .digest__section:first-child {
+  margin-top: var(--space-10);
 }

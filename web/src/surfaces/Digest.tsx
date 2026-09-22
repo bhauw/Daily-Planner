@@ -1,11 +1,20 @@
 /*
- * Digest — the thing you read once, at the start of the day.
+ * Digest — the inbox, ordered by what a message is ABOUT, with the day's load
+ * around it.
  *
- * Today first: the schedule in order, the mail that is waiting on a reply, and
- * the tasks that are actually due. Every row opens to its own detail in place,
- * so the list stays scannable and nothing needs a second screen. The week
- * ahead sits underneath, because what happens after today changes what today
- * is for.
+ * It used to be a second Focus: the same rows, the same stylesheet, the
+ * schedule first and mail as one undifferentiated "needs a reply" pile. Mail
+ * leads now, because that is the thing that arrives whether you look or not.
+ *
+ * Read first holds the four overrides — a security warning, an interview, a
+ * stated deadline, a payment — and each row says the phrase that put it there.
+ * Under it, mail sits in Braxton's order: school, recruiting, finance,
+ * personal, other. The schedule and what is due follow as WORKLOAD: the
+ * context that decides whether a reply can wait.
+ *
+ * The ranking is the engine's (`MailTriagePolicy`). This file groups it and
+ * never re-sorts it — a rank each surface re-derives is one that eventually
+ * disagrees with itself.
  *
  * Rows are <details>/<summary>: keyboard and screen-reader behaviour comes
  * from the platform rather than from a pile of ARIA we would have to maintain.
@@ -19,6 +28,7 @@ import { colorForCategory, presentationFor } from "../lib/category";
 import { durationMinutes, formatLongDay, formatRange, formatTime } from "../lib/format";
 import { EmptyState } from "../components/Column";
 import { relative } from "./priority";
+import { REASON_LABEL, groupMail } from "./mailTriage";
 import { ActionBar } from "./ActionBar";
 import { NO_WRITES, eventActions, replyActions, taskActions, type ActionCapability } from "./actions";
 import "./digest.css";
@@ -27,6 +37,8 @@ interface DigestProps {
   preview: Preview;
   tasks: TasksResponse;
   drafts: Draft[];
+  /** Promotions and spam the engine withheld, so the surface can say so. */
+  hiddenCount?: number;
   /** The next seven days. Null when the engine could not be asked — the section then says so. */
   week?: WeekResponse | null;
   /** What the connected account may actually do. Drives which actions are live. */
@@ -62,7 +74,15 @@ interface OpenTask {
   list: string;
 }
 
-export function Digest({ preview, tasks, drafts, week, capability = NO_WRITES, now }: DigestProps) {
+export function Digest({
+  preview,
+  tasks,
+  drafts,
+  hiddenCount = 0,
+  week,
+  capability = NO_WRITES,
+  now,
+}: DigestProps) {
   const clock = now ?? new Date();
   const nowMs = clock.getTime();
   const todayKey = DAY_KEY.format(clock);
@@ -89,6 +109,8 @@ export function Digest({ preview, tasks, drafts, week, capability = NO_WRITES, n
     [openTasks, todayKey],
   );
 
+  // Grouped, never re-sorted: the list arrives ranked.
+  const mail = useMemo(() => groupMail(drafts), [drafts]);
   const replies = useMemo(() => drafts.filter((d) => d.kind === "reply"), [drafts]);
 
   const schedule = useMemo(
@@ -119,9 +141,11 @@ export function Digest({ preview, tasks, drafts, week, capability = NO_WRITES, n
       }));
   }, [week, preview.schedule, todayKey]);
 
+  // The workload line. Mail first, because that is what the surface now leads with.
   const summary = [
+    mail.unreadCount > 0 ? count(mail.unreadCount, "unread") : count(replies.length, "message"),
+    mail.urgent.length > 0 ? `${mail.urgent.length} to read first` : "",
     count(schedule.length, "event"),
-    count(replies.length, "reply", "replies"),
     count(dueTasks.length, "task due"),
   ]
     .filter(Boolean)
@@ -129,56 +153,87 @@ export function Digest({ preview, tasks, drafts, week, capability = NO_WRITES, n
 
   const nothingToday = schedule.length === 0 && replies.length === 0 && dueTasks.length === 0;
 
+  const weekCount = weekAhead.reduce((n, d) => n + d.events.length, 0);
+  const noMail = mail.urgent.length === 0 && mail.groups.length === 0;
+
+  /*
+   * Three regions, and the day header is not one of them.
+   *
+   * The whole surface used to be a single scroller, so reading down the inbox pushed the date
+   * and the workload line off the top — the two things you want to still be able to see while
+   * you decide whether a reply can wait. The header is pinned now, the mail list scrolls on its
+   * own, and the workload gets its own pane rather than riding along underneath the list: a
+   * long inbox would otherwise bury the schedule several screens down.
+   */
   return (
     <div className="digest">
-      <div className="digest__scroll">
-        <header className="digest__head">
-          <div className="colhead__eyebrow">Digest</div>
-          <h1 className="digest__title">{formatLongDay(preview.schedule[0]?.start ?? clock.toISOString())}</h1>
-          <p className="digest__summary">{summary || "Nothing scheduled, nothing waiting."}</p>
-        </header>
+      <header className="digest__head">
+        <div className="colhead__eyebrow">Digest</div>
+        <h1 className="digest__title">{formatLongDay(preview.schedule[0]?.start ?? clock.toISOString())}</h1>
+        <p className="digest__summary">{summary || "Nothing scheduled, nothing waiting."}</p>
+      </header>
 
+      <div className="digest__mail">
         {nothingToday ? (
           <EmptyState
             title="Your day is clear"
-            detail="No events, no replies waiting, nothing due. The week ahead is below."
+            detail="No events, no replies waiting, nothing due. Today's load is below."
           />
+        ) : noMail ? (
+          <EmptyState title="Inbox is clear" detail="Nothing waiting on a reply." />
         ) : (
           <>
-            {schedule.length > 0 && (
-              <Section title="Today" count={schedule.length}>
-                {schedule.map((event) => (
-                  <EventDetail key={event.id} event={event} nowMs={nowMs} capability={capability} />
-                ))}
-              </Section>
-            )}
-
-            {replies.length > 0 && (
-              <Section title="Needs a reply" count={replies.length}>
-                {replies.map((draft) => (
+            {mail.urgent.length > 0 && (
+              <Section title="Read first" count={mail.urgent.length}>
+                {mail.urgent.map((draft) => (
                   <ReplyDetail key={draft.id} draft={draft} nowMs={nowMs} capability={capability} />
                 ))}
               </Section>
             )}
 
-            {dueTasks.length > 0 && (
-              <Section title="Due" count={dueTasks.length}>
-                {dueTasks.map(({ task, list }) => (
-                  <TaskDetail
-                    key={task.id}
-                    task={task}
-                    list={list}
-                    nowMs={nowMs}
-                    todayKey={todayKey}
-                    capability={capability}
-                  />
+            {mail.groups.map((group) => (
+              <Section key={group.key} title={group.title} count={group.drafts.length}>
+                {group.drafts.map((draft) => (
+                  <ReplyDetail key={draft.id} draft={draft} nowMs={nowMs} capability={capability} />
                 ))}
               </Section>
+            ))}
+
+            {hiddenCount > 0 && (
+              <p className="digest__note">
+                {count(hiddenCount, "promotion")} hidden. Hiding them is only honest if it says
+                so.
+              </p>
             )}
           </>
         )}
+      </div>
 
-        <Section title="The week ahead" count={weekAhead.reduce((n, d) => n + d.events.length, 0)}>
+      <div className="digest__load" aria-label="Today's load">
+        {schedule.length > 0 && (
+          <Section title="Today" count={schedule.length}>
+            {schedule.map((event) => (
+              <EventDetail key={event.id} event={event} nowMs={nowMs} capability={capability} />
+            ))}
+          </Section>
+        )}
+
+        {dueTasks.length > 0 && (
+          <Section title="Due" count={dueTasks.length}>
+            {dueTasks.map(({ task, list }) => (
+              <TaskDetail
+                key={task.id}
+                task={task}
+                list={list}
+                nowMs={nowMs}
+                todayKey={todayKey}
+                capability={capability}
+              />
+            ))}
+          </Section>
+        )}
+
+        <Section title="The week ahead" count={weekCount}>
           {weekAhead.length === 0 ? (
             <p className="digest__note">
               {week
@@ -225,6 +280,7 @@ function Row({
   meta,
   trailing,
   label,
+  badge,
   children,
 }: {
   color: string;
@@ -232,6 +288,8 @@ function Row({
   meta: string;
   trailing?: string;
   label: string;
+  /** Shown only on rows that jumped the category order, so the jump is visible. */
+  badge?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -239,7 +297,10 @@ function Row({
       <summary className="drow__summary" aria-label={label}>
         <span className="drow__chip" style={{ background: color }} aria-hidden="true" />
         <span className="drow__body">
-          <span className="drow__title">{title}</span>
+          <span className="drow__title">
+            {badge && <span className="drow__badge">{badge}</span>}
+            {title}
+          </span>
           <span className="drow__meta">{meta}</span>
         </span>
         {trailing && <span className="num drow__trailing">{trailing}</span>}
@@ -308,6 +369,9 @@ function ReplyDetail({
   const color = colorForCategory(draft.category ?? "other");
   const received = draft.receivedAt ? new Date(draft.receivedAt).getTime() : NaN;
   const age = Number.isNaN(received) ? "" : relative(nowMs, received);
+  // Only the overrides get a badge. Putting one on every row would make the four that
+  // actually jumped the queue indistinguishable from the rest.
+  const badge = draft.band === "urgent" && draft.reason ? REASON_LABEL[draft.reason] : undefined;
 
   return (
     <Row
@@ -315,8 +379,12 @@ function ReplyDetail({
       title={draft.title}
       meta={draft.sender ?? "Unknown sender"}
       trailing={draft.receivedAt ? formatTime(draft.receivedAt) : undefined}
-      label={`${draft.title}, from ${draft.sender ?? "unknown sender"}`}
+      label={`${draft.title}, from ${draft.sender ?? "unknown sender"}${
+        badge ? `, ${badge}` : ""
+      }`}
+      badge={badge}
     >
+      {draft.why && <Field label="Why it is here" value={draft.why} />}
       {draft.sender && <Field label="From" value={draft.sender} />}
       {age && <Field label="Arrived" value={age} />}
       {draft.summary && <Field label="What it says" value={draft.summary} />}

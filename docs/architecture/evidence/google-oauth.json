@@ -1,0 +1,44 @@
+{
+  "status": "BLOCKED_BY_USER_AUTH",
+  "m2aImplementation": "READY_FOR_USER_AUTH",
+  "scopes": [
+    "openid",
+    "email",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/tasks.readonly"
+  ],
+  "deterministicProof": {
+    "loopbackIPv4Only": true,
+    "ephemeralPort": true,
+    "pkceS256": true,
+    "pkceEntropyRequirementVerified": true,
+    "stateEntropyRequirementVerified": true,
+    "constantTimeStateComparison": true,
+    "incrementalAuthorizationDisabled": true,
+    "writeScopesRejected": true,
+    "syntheticKeychainBoundaryVerified": true,
+    "redactionVerified": true,
+    "interruptionCleanupVerified": true,
+    "postExchangeRevocationFaultsVerified": true,
+    "cleanupFailureReportingVerified": true,
+    "fragmentedCallbackHeadersVerified": true,
+    "offlineVerifierReady": true,
+    "inverseCanariesVerified": true,
+    "signedLifecycleVerified": true
+  },
+  "liveReadOnly": {
+    "implemented": true,
+    "attempted": false,
+    "verified": false,
+    "userAuthorizationRequired": true,
+    "automatedAcceptancePerformedLiveCanary": false,
+    "browserOpened": false,
+    "providerDataRead": false,
+    "realOAuthCredentialUsed": false,
+    "realKeychainItemUsed": false
+  },
+  "realCredentialsPersisted": false,
+  "realPrivateDataAccessed": false,
+  "sanitizedLiveCanaryObservation": null
+}

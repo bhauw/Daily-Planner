@@ -65,9 +65,23 @@ describe("every route carries the keys the client reads", () => {
     for (const event of [...preview.queue, ...preview.schedule]) {
       // `end`, `due` and `location` are `string | null`: the KEY must exist even when null,
       // because the client distinguishes "absent" from "null".
-      requires(event, ["id", "title", "category", "kind", "start", "end", "due", "location"]);
+      requires(event, [
+        "id",
+        "title",
+        "category",
+        "kind",
+        "start",
+        "end",
+        "due",
+        "location",
+        // Without this key an event cannot be moved — it is the calendar the PATCH goes to.
+        // Its absence is what limited "Move it" to inserting a duplicate.
+        "calendarId",
+      ]);
       expect(CATEGORIES).toContain(event.category);
       expect(enums.kind).toContain(event.kind);
+      expect(typeof event.calendarId).toBe("string");
+      expect(event.calendarId.length).toBeGreaterThan(0);
     }
   });
 
@@ -86,12 +100,20 @@ describe("every route carries the keys the client reads", () => {
       requires(draft, ["id", "title", "summary", "kind"]);
       expect(typeof draft.title).toBe("string");
     }
+    // The KEY must exist even on the synthetic path, where nothing is hidden. The client reads
+    // it to say "14 promotions hidden"; undefined would silently become no note at all.
+    expect(typeof routes["/api/drafts"].hiddenCount).toBe("number");
   });
 
   // The client posts to exactly these paths. If the engine renames one, the composer's request
   // would 404 at runtime with nothing here to catch it.
   it("the write routes the client posts to are the ones the engine serves", () => {
-    expect([...enums.writeRoute].sort()).toEqual(["/api/calendar/events", "/api/mail/send"]);
+    expect([...enums.writeRoute].sort()).toEqual([
+      "/api/calendar/events",
+      "/api/calendar/events/move",
+      "/api/mail/draft",
+      "/api/mail/send",
+    ]);
   });
 
   // The client maps four engine error codes to display text and treats the rest generically.
@@ -140,16 +162,38 @@ describe("every route carries the keys the client reads", () => {
     expect(typeof settings.safety.label).toBe("string");
     // The label IS the safety rail's text now. An empty one is a rail that says nothing.
     expect(settings.safety.label.length).toBeGreaterThan(0);
-    expect(settings.capability).toEqual({ canSend: true, canSchedule: true });
+    expect(settings.capability).toEqual({
+      canSend: true,
+      canSchedule: true,
+      canReschedule: true,
+      // False even on a full write grant: drafting needs an assistant on the machine, not a
+      // permission from Google, and the contract fixture wires none.
+      canDraft: false,
+    });
   });
 
-  it("/api/settings capability is a pair of booleans, both ways", () => {
+  it("/api/settings capability is booleans all the way, both ways", () => {
     for (const settings of [routes["/api/settings"], variants.settingsWritable]) {
-      requires(settings.capability, ["canSend", "canSchedule"]);
+      requires(settings.capability, ["canSend", "canSchedule", "canReschedule", "canDraft"]);
       expect(typeof settings.capability.canSend).toBe("boolean");
       expect(typeof settings.capability.canSchedule).toBe("boolean");
+      // Pinned because the client falls back to "insert a block" on a falsy value: if the
+      // engine ever sent a string here, "Move it" would silently start duplicating again.
+      expect(typeof settings.capability.canReschedule).toBe("boolean");
+      expect(typeof settings.capability.canDraft).toBe("boolean");
+      // The assistant is described separately from the write mode, because it answers a
+      // different question: not what may be done to the account, but where content goes.
+      requires(settings.assist, ["enabled", "provider", "contentLeavesMachine", "label"]);
+      expect(typeof settings.assist.contentLeavesMachine).toBe("boolean");
     }
-    expect(routes["/api/settings"].capability).toEqual({ canSend: false, canSchedule: false });
+    expect(routes["/api/settings"].capability).toEqual({
+      canSend: false,
+      canSchedule: false,
+      canReschedule: false,
+      canDraft: false,
+    });
+    // Sample data is nobody's mail, so there is nothing to draft against.
+    expect(routes["/api/settings"].assist.enabled).toBe(false);
   });
 
   // The synthetic fallback used to be invisible: fixtures rendered in the same chrome as real

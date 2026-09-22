@@ -25,10 +25,11 @@ export type {
   TaskItem,
   TaskList,
   TasksResponse,
+  ReplyIntent,
 } from "../api/client";
 export { api, ApiError } from "../api/client";
 
-export { presentationFor, colorForCategory, kindLabel } from "../lib/category";
+export { presentationFor, colorForCategory, inkForCategory, kindLabel } from "../lib/category";
 export { formatTime, formatRange, formatLongDay, durationMinutes } from "../lib/format";
 export { useAsync } from "../lib/useAsync";
 export type { AsyncState, AsyncStatus } from "../lib/useAsync";

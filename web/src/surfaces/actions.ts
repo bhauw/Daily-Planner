@@ -69,9 +69,18 @@ export interface ItemAction {
 export interface ActionCapability {
   canSend: boolean;
   canSchedule: boolean;
+  /** Whether an event already on the calendar can be moved, rather than copied. */
+  canReschedule?: boolean;
+  /** Whether an assistant is available to propose a reply body. */
+  canDraft?: boolean;
 }
 
-export const NO_WRITES: ActionCapability = { canSend: false, canSchedule: false };
+export const NO_WRITES: ActionCapability = {
+  canSend: false,
+  canSchedule: false,
+  canReschedule: false,
+  canDraft: false,
+};
 
 /**
  * Google's own compose and event-creation screens, prefilled.
@@ -175,18 +184,38 @@ export function eventActions(event: PlannerEvent, capability: ActionCapability):
   });
 
 
-  // Rescheduling is expressed as "put a block where you actually want it": this app inserts
-  // events, it does not move existing ones, and saying so with the times prefilled is honest.
-  // Editing the original in place is Google's job until an update route exists.
+  /*
+   * "Move it" now moves.
+   *
+   * It used to INSERT a second event with the same details and leave the original where it
+   * was — on the user's real calendar — because no update route existed. It does that only as
+   * a fallback now: when the engine reports `canReschedule` and the event names the calendar
+   * it is on, the action carries a move target and the desk patches the event in place.
+   *
+   * The fallback is kept rather than hidden, and it says what it does. An account connected to
+   * an older engine, or an event read without a calendar, still gets a usable action — the
+   * label just stops claiming to move something.
+   */
   const start = new Date(event.start);
+  const timesKnown = !Number.isNaN(start.getTime());
+  const end = event.end ?? new Date(start.getTime() + 60 * 60_000).toISOString();
+  const canMove = capability.canReschedule === true && Boolean(event.calendarId) && Boolean(event.id);
+
   const inApp: SchedulePrefill | undefined =
-    capability.canSchedule && !Number.isNaN(start.getTime())
+    capability.canSchedule && timesKnown
       ? {
           title: event.title,
           start: event.start,
-          end: event.end ?? new Date(start.getTime() + 60 * 60_000).toISOString(),
+          end,
           ...(event.location ? { location: event.location } : {}),
-          context: `Moving ${event.title}`,
+          ...(canMove
+            ? {
+                context: `Moving ${event.title}. This changes the event you already have.`,
+                move: { eventId: event.id, calendarId: event.calendarId },
+              }
+            : {
+                context: `${event.title} — this adds a NEW block; the original stays where it is.`,
+              }),
         }
       : undefined;
 
@@ -195,7 +224,9 @@ export function eventActions(event: PlannerEvent, capability: ActionCapability):
       ? [
           {
             id: "reschedule",
-            label: "Move it",
+            // Only the real move is called "Move it". The fallback inserts a block and says so,
+            // because a button that says move and then duplicates is the bug this route fixed.
+            label: canMove ? "Move it" : "Add a block instead",
             effect: "schedule" as const,
             primary: true,
             shortcut: "s",
@@ -241,6 +272,10 @@ export function replyActions(draft: Draft, capability: ActionCapability): ItemAc
               // The thread id is what makes this land in the conversation it answers rather
               // than beside it. Absent on sample data, which has no real thread.
               ...(draft.threadId ? { threadId: draft.threadId } : {}),
+              // The id the assistant would draft against. Carried only when an assistant
+              // exists, so the composer shows the offer exactly when it can honour it. Sample
+              // rows have no engine-side message to re-read, so they never get it.
+              ...(capability.canDraft && draft.band ? { draftFrom: draft.id } : {}),
               context: draft.sender!,
             } satisfies ComposePrefill,
           }

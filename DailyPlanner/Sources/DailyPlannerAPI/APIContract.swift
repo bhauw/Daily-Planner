@@ -87,9 +87,19 @@ struct PlannerEventDTO: Encodable {
     let end: String?
     let due: String?
     let location: String?
+    /// The calendar this event is on.
+    ///
+    /// The domain has carried it since the read client was written; this DTO dropped it, and
+    /// that omission is why a move was impossible: you cannot PATCH an event without naming the
+    /// calendar it lives on, and `primary` is a guess that would touch the wrong event or none.
+    ///
+    /// Non-optional, because `PlannerEvent.calendarID` is: every event this engine emits was
+    /// read from a specific calendar.
+    let calendarId: String
 
     init(_ event: PlannerEvent) {
         id = event.id
+        calendarId = event.calendarID.rawValue
         title = event.title
         category = APICategory(event.category)
         kind = APIKind(event.kind)
@@ -101,7 +111,7 @@ struct PlannerEventDTO: Encodable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, category, kind, start, end, due, location
+        case id, title, category, kind, start, end, due, location, calendarId
     }
 
     // The contract declares `end`, `due`, and `location` as `string | null`: the keys must be
@@ -118,6 +128,7 @@ struct PlannerEventDTO: Encodable {
         try container.encode(end, forKey: .end)
         try container.encode(due, forKey: .due)
         try container.encode(location, forKey: .location)
+        try container.encode(calendarId, forKey: .calendarId)
     }
 }
 
@@ -207,17 +218,66 @@ struct SafetyDTO: Encodable {
 struct CapabilityDTO: Encodable {
     let canSend: Bool
     let canSchedule: Bool
+    /// Whether an event the user already has can be moved, as opposed to a new one created.
+    ///
+    /// Google grants both with one scope, so this tracks `canSchedule` on the grant — but the
+    /// UI asks it separately, because "Move it" meaning *move* rather than *insert a duplicate*
+    /// depends on a route this engine may not have built, not only on what Google allows.
+    let canReschedule: Bool
+    /// Whether an assistant is wired up to propose replies. Independent of the Google grant —
+    /// it depends on a CLI or a local model being present, not on what the account permits.
+    let canDraft: Bool
 
-    static let none = CapabilityDTO(canSend: false, canSchedule: false)
+    static let none = CapabilityDTO(
+        canSend: false, canSchedule: false, canReschedule: false, canDraft: false
+    )
 
-    init(canSend: Bool, canSchedule: Bool) {
+    init(canSend: Bool, canSchedule: Bool, canReschedule: Bool, canDraft: Bool = false) {
         self.canSend = canSend
         self.canSchedule = canSchedule
+        self.canReschedule = canReschedule
+        self.canDraft = canDraft
     }
 
     init(_ capability: GoogleGrantedCapability?) {
         canSend = capability?.canSendMail ?? false
         canSchedule = capability?.canCreateEvents ?? false
+        canReschedule = capability?.canCreateEvents ?? false
+        canDraft = false
+    }
+}
+
+/// What the assistant is, and whether using it means content leaves the machine.
+///
+/// This is its own thing rather than another `SafetyDTO` mode, because it answers a different
+/// question. `mode` says what this app may do TO the user's account; this says where their
+/// content GOES. An app that can send mail but drafts nothing, and an app that drafts through a
+/// local model but cannot send, are both real configurations and the rail has to describe them
+/// separately.
+struct AssistDTO: Encodable {
+    let enabled: Bool
+    /// "Claude (your subscription)", "Local model", … Empty when nothing is wired.
+    let provider: String
+    /// True when drafting transmits the user's mail off this machine.
+    let contentLeavesMachine: Bool
+    /// The line the rail shows. Says the uncomfortable half out loud.
+    let label: String
+
+    static let off = AssistDTO(
+        enabled: false, provider: "", contentLeavesMachine: false, label: ""
+    )
+
+    static func forProvider(_ provider: String, contentLeavesMachine: Bool) -> AssistDTO {
+        AssistDTO(
+            enabled: true,
+            provider: provider,
+            contentLeavesMachine: contentLeavesMachine,
+            // Named plainly. "AI-powered" would be the marketing version of a sentence whose
+            // whole job is to tell the user their mail is being sent to someone else.
+            label: contentLeavesMachine
+                ? "Drafting on · \(provider) · the message you draft against leaves this Mac"
+                : "Drafting on · \(provider) · stays on this Mac"
+        )
     }
 }
 
@@ -255,6 +315,8 @@ struct SettingsResponse: Encodable {
     let source: SourceDTO
     /// What the connected grant permits. The client gates its write affordances on this.
     let capability: CapabilityDTO
+    /// The assistant, and where the user's content goes when it is used.
+    let assist: AssistDTO
 }
 
 struct HealthResponse: Encodable {
@@ -294,10 +356,71 @@ struct DraftDTO: Encodable {
     /// The Gmail thread, so a reply composed from this row lands in the conversation it answers
     /// rather than starting a new one beside it. Opaque; the client only hands it back.
     let threadId: String?
+    /// "urgent" | "ordinary" — which band the triage put it in. Absent on synthetic content.
+    let band: String?
+    /// "security" | "interview" | "deadline" | "obligation" | "category".
+    let reason: String?
+    /// Why it is ranked where it is, in the user's words. Shown on the row.
+    let why: String?
+    /// Still unread at the provider.
+    let unread: Bool?
+
+    /// The triage fields default to absent so the synthetic path can build a row without
+    /// claiming a ranking it did not compute. The client treats absent as "not triaged" and
+    /// renders the row plainly, rather than inventing a band for it.
+    init(
+        id: String,
+        title: String,
+        summary: String,
+        kind: String,
+        sender: String?,
+        category: APICategory?,
+        receivedAt: String?,
+        threadId: String?,
+        band: String? = nil,
+        reason: String? = nil,
+        why: String? = nil,
+        unread: Bool? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.kind = kind
+        self.sender = sender
+        self.category = category
+        self.receivedAt = receivedAt
+        self.threadId = threadId
+        self.band = band
+        self.reason = reason
+        self.why = why
+        self.unread = unread
+    }
 }
 
+/// The triage list, already ranked.
+///
+/// Ordering happens in the ENGINE, not in the client. Two surfaces read this, and a ranking
+/// that each of them re-derives is a ranking that will eventually disagree with itself — the
+/// same failure that had Focus and Digest colouring one event two different ways.
 struct DraftsResponse: Encodable {
     let drafts: [DraftDTO]
+    /// Promotions, social and spam withheld from the list. Reported so the UI can say
+    /// "14 hidden" rather than silently showing a shorter list.
+    let hiddenCount: Int
+
+    init(drafts: [DraftDTO], hiddenCount: Int = 0) {
+        self.drafts = drafts
+        self.hiddenCount = hiddenCount
+    }
+}
+
+extension MailTriageBand {
+    var wireName: String {
+        switch self {
+        case .urgent: return "urgent"
+        case .ordinary: return "ordinary"
+        }
+    }
 }
 
 struct TaskDTO: Encodable {
@@ -400,6 +523,14 @@ enum APIJSON {
 enum APIWriteRoute: String, CaseIterable {
     case sendMail = "/api/mail/send"
     case createEvent = "/api/calendar/events"
+    /// Moving an existing event. A POST on the loopback side like every other write here — the
+    /// PATCH is what the engine sends to Google, and `RequestGuard`'s rule that POST is the only
+    /// verb it will accept on a write route stays exactly as it was.
+    case moveEvent = "/api/calendar/events/move"
+    /// Proposing a reply. A "write" for guard purposes because it sends the user's content off
+    /// the machine, which is the thing the guard exists to control — even though it changes
+    /// nothing in their account and mails nobody.
+    case draftReply = "/api/mail/draft"
 
     static func matching(_ path: String) -> APIWriteRoute? {
         APIWriteRoute(rawValue: path)
@@ -424,6 +555,55 @@ struct SendMailRequest: Decodable {
         case to, cc, bcc, subject, body
         case threadID = "threadId"
         case inReplyTo
+    }
+}
+
+/// A request for a proposed reply.
+///
+/// It carries an ID and an intent, and deliberately NOT the message text. The engine re-reads
+/// the message from the inbox and builds the prompt from its own copy, so the rule that a
+/// private message is never transmitted is enforced against the provider's classification
+/// rather than against whatever the client claimed. A client that wanted to get private content
+/// to a model would have nowhere to put it.
+struct DraftReplyRequest: Decodable {
+    let messageID: String
+    /// One of `PlannerReplyIntent`'s raw values. Anything else is refused.
+    let intent: String
+    /// What the user typed instead of pressing an intent button. Optional; absent means they
+    /// used a button. Still the only free text the client may send, and it is an instruction
+    /// about the message, never the message.
+    let instruction: String?
+
+    enum CodingKeys: String, CodingKey {
+        case messageID = "messageId"
+        case intent
+        case instruction
+    }
+}
+
+struct DraftReplyResponse: Encodable {
+    let ok: Bool
+    /// The proposed body. Opens in the composer for editing; nothing is sent from here.
+    let body: String
+    /// Which assistant wrote it, so the composer can say so.
+    let provider: String
+}
+
+/// A request to move an event the user already has.
+///
+/// It names an event, a calendar and two times. There is deliberately no title, no location and
+/// no description: this route cannot rename or re-describe anything, because those fields do not
+/// exist on it to be sent.
+struct MoveEventRequest: Decodable {
+    let eventID: String
+    let calendarID: String
+    let start: String
+    let end: String
+
+    enum CodingKeys: String, CodingKey {
+        case eventID = "eventId"
+        case calendarID = "calendarId"
+        case start, end
     }
 }
 
@@ -474,6 +654,9 @@ enum APIWriteFailure: Error {
     case providerRefused
     /// It did not get through. Later may work.
     case providerUnavailable
+    /// The assistant is installed but signed out. Kept apart from `providerUnavailable` because
+    /// waiting does not fix it and the person can, in about ten seconds.
+    case assistantSignedOut
 
     var response: HTTPResponse {
         switch self {
@@ -493,6 +676,11 @@ enum APIWriteFailure: Error {
             return .error(
                 503, "Service Unavailable", .unavailable,
                 "Could not reach Google. Nothing was sent."
+            )
+        case .assistantSignedOut:
+            return .error(
+                503, "Service Unavailable", .unavailable,
+                "The Claude CLI is not signed in. Run \u{22}claude\u{22} in a terminal, sign in, then try again."
             )
         }
     }
@@ -520,6 +708,30 @@ enum APIWriteFailure: Error {
         }
     }
 
+    /// The drafting failures a user can do something about. `messageIsPrivate` is handled at the
+    /// route with its own sentence, because it is a refusal to honour rather than a mistake to
+    /// correct, and saying "check the message" about it would be misleading.
+    static func message(for error: PlannerDraftingError) -> String {
+        switch error {
+        case .messageIsPrivate:
+            return "That message is marked private, so its content is never sent to an assistant."
+        case .nothingToAnswer:
+            return "There is nothing in that message to reply to."
+        case .tooLarge:
+            return "That message is longer than this app will send to an assistant."
+        case .instructionTooLong:
+            return "That instruction is too long. Try a sentence or two."
+        case .emptyReply:
+            return "The assistant did not write anything. Try again."
+        case .unavailable:
+            return "The assistant could not be reached."
+        case .notSignedIn:
+            return "The Claude CLI is not signed in. Sign in to it and try again."
+        case .cancelled:
+            return "That was cancelled."
+        }
+    }
+
     /// Classifies a provider error without knowing which provider it came from.
     static func provider(_ error: Error) -> APIWriteFailure {
         guard let failure = error as? any PlannerWriteFailure else { return .providerUnavailable }
@@ -536,6 +748,7 @@ enum APIWriteFailure: Error {
         case .invalid: return "invalid-request"
         case .providerRefused: return "provider-refused"
         case .providerUnavailable: return "provider-unavailable"
+        case .assistantSignedOut: return "assistant-signed-out"
         }
     }
 }

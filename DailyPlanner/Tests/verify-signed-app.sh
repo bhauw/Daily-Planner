@@ -32,7 +32,7 @@ if ! verify_seal_at_rest; then
 fi
 
 /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" \
-  | grep -xq 'com\.example\.dailyplanner'
+  | grep -xq 'com\.braxton\.dailyplanner'
 
 if codesign -d --entitlements :- "$app" 2>&1 \
   | grep -q 'com[.]apple[.]security[.]app-sandbox'; then

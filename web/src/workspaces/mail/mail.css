@@ -4,9 +4,16 @@
  * presentationFor). SF Mono (.num) is reserved for counts, ages and status.
  */
 
+/*
+ * Three columns, weighted by how much each is actually used.
+ *
+ * Context is four counts and a disclaimer — it was taking 300px to say "1, 0, 0". The middle
+ * pane is where the work happens (read the mail, draft the reply, review the recipients), so
+ * the width Context gave up goes there rather than being shared out evenly.
+ */
 .mail {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(360px, 1fr) minmax(240px, 300px);
+  grid-template-columns: minmax(280px, 340px) minmax(460px, 1fr) minmax(176px, 208px);
   height: 100%;
   min-height: 0;
 }
@@ -18,6 +25,19 @@
   min-height: 0;
   min-width: 0;
   border-right: var(--hairline);
+}
+/*
+ * The editor and context panes do NOT scroll — only the thread list does.
+ * A pane that scrolls carries its own header, the recipient list and the
+ * action footer away with it, which is how you end up approving a send with
+ * the "To" line off-screen. They are fixed-height columns instead, and the
+ * one elastic element inside each absorbs the slack.
+ */
+.mail__editor-pane,
+.mail__ctx-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .mail__ctx-pane {
   border-right: none;
@@ -129,7 +149,7 @@
   border-color: var(--warn);
 }
 .thread__status.is-rejected {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .thread__flag {
   font-size: var(--text-2xs);
@@ -143,14 +163,23 @@
   flex-direction: column;
   gap: var(--space-6);
   padding: 0 var(--space-8) var(--space-8);
-  min-height: 100%;
+  /* Fills the pane exactly and never exceeds it, so nothing here scrolls. */
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
+/* Nothing scrolls past it any more, so it does not need to be sticky. */
 .editor__statusbar {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex: 0 0 auto;
   padding: var(--space-2) 0 var(--space-5);
   background: var(--bg);
+}
+/* The fixed furniture: present at all times, never compressed away. */
+.editor > .notice,
+.editor > .review,
+.editor > .field,
+.editor__actions {
+  flex: 0 0 auto;
 }
 
 .stepper {
@@ -165,7 +194,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: var(--text-xs);
 }
 .stepper__step.is-done {
@@ -231,7 +260,7 @@
   letter-spacing: var(--tracking-eyebrow);
 }
 .review__lock {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .review__row {
   display: grid;
@@ -251,7 +280,7 @@
   min-width: 0;
 }
 .review__empty {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .recipient {
   display: inline-flex;
@@ -290,9 +319,13 @@
   flex-direction: column;
   gap: var(--space-3);
 }
-.field--grow {
-  flex: 1;
-  min-height: 180px;
+/*
+ * The elastic element. `min-height: 0` rather than a floor: a floor is what
+ * made the column taller than the pane and forced the whole thing to scroll.
+ */
+.editor > .field--grow {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .field__label {
   font-size: var(--text-xs);
@@ -313,9 +346,10 @@
   padding: var(--space-4) var(--space-5);
 }
 .field__textarea {
-  flex: 1;
-  min-height: 160px;
-  resize: vertical;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Dragging the handle would push the fixed footer out of the pane. */
+  resize: none;
 }
 .field__input:disabled,
 .field__textarea:disabled {
@@ -347,6 +381,18 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.ctx__list,
+.ctx__safe {
+  flex: 0 0 auto;
+}
+.ctx__notes {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .ctx__list {
   margin: 0;
@@ -384,6 +430,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  min-height: 0;
 }
 .ctx__note {
   display: flex;
@@ -413,14 +460,46 @@
   border-right: none;
   border-bottom: var(--hairline);
 }
+/*
+ * Detached is a single narrow window that scrolls as ONE column, so the panes
+ * give up their fixed heights — otherwise the editor would be squeezed into a
+ * third of a small window while the page it sits in scrolls anyway.
+ */
+.mail--detached .mail__editor-pane,
+.mail--detached .mail__ctx-pane,
+.mail--detached .editor,
+.mail--detached .ctx {
+  overflow: visible;
+}
+.mail--detached .editor > .field--grow {
+  min-height: 180px;
+}
+.mail--detached .field__textarea {
+  min-height: 160px;
+}
 
 /* Real inbox triage: the thread is shown, no reply is invented. */
+/*
+ * A real thread has no drafted reply, so the snippet IS the payload of this pane.
+ *
+ * It CLAMPS rather than scrolls. Only the thread list scrolls in this workspace, so a long
+ * preview cannot have a scrollbar of its own — and a hard clip would be worse than either,
+ * because text cut off at an arbitrary pixel looks like text that simply ended. The clamp
+ * truncates at a line boundary with an ellipsis, so "there is more of this" is visible rather
+ * than inferred.
+ */
 .triage__snippet {
   margin: 0 0 var(--space-4);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
   color: var(--text);
   white-space: pre-wrap;
+  min-height: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 12;
+  line-clamp: 12;
 }
 .triage__notice {
   margin: 0;
@@ -437,4 +516,55 @@
 .thread__sender {
   font-size: var(--text-xs);
   color: var(--text-2);
+}
+
+/*
+ * Reply box: drafting a real inbox thread, in the pane the thread is in.
+ *
+ * Reading a message and answering it are one action, so the controls sit under the thread
+ * rather than behind a navigation step. The chips reuse .compose__chip so the two places that
+ * draft replies cannot drift apart visually.
+ */
+.reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: var(--hairline);
+}
+.reply__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+.reply__hint {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.reply__quick {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.reply__custom {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+/* The elastic element of the pane: it takes whatever height is left, and no floor. */
+.reply__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Context is a narrow column now, so its rows stack rather than sit side by side. */
+.mail__ctx-pane .ctx__row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
 }

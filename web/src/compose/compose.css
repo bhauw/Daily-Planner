@@ -88,7 +88,7 @@
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 .compose__input,
@@ -118,7 +118,7 @@
   align-self: flex-start;
   padding: 0;
   font-size: var(--text-sm);
-  color: var(--accent);
+  color: var(--accent-text);
   background: none;
   border: 0;
   cursor: pointer;
@@ -266,4 +266,64 @@
   .compose__row {
     grid-template-columns: 1fr;
   }
+}
+
+/*
+ * A field the move dialog shows but will not write. It reads as the value it is, not as an
+ * input the user could change and then watch the change be discarded.
+ */
+.compose__static {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+/*
+ * The drafting control. Sits above the message field because it fills that field, and reads as
+ * an offer rather than a step — the composer works identically with it ignored.
+ */
+.compose__assist {
+  padding: var(--space-5) 0 var(--space-4);
+  border-top: var(--hairline);
+}
+
+.compose__assistnote {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--text-2);
+}
+
+/* What the assistant just did, as opposed to what pressing a button will do. */
+.compose__assistnote--said {
+  color: var(--text);
+}
+
+/*
+ * The typed-instruction row. Sits under the intent chips because it is the fallback for when
+ * none of them fits, not a seventh option competing with them for attention.
+ */
+.compose__custom {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  margin-top: var(--space-4);
+}
+.compose__custominput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-3) var(--space-5);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface-2);
+  border: var(--hairline-strong);
+  border-radius: var(--radius-md);
+}
+.compose__custominput::placeholder {
+  color: var(--text-2);
+}
+.compose__custominput:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
 }

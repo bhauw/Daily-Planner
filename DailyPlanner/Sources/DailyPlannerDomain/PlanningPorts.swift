@@ -80,6 +80,16 @@ public struct PlannerMailItem: Hashable, Sendable {
     public let category: PlannerCategory
     /// True when the classifier marked the source private; the UI must not show its content.
     public let isPrivate: Bool
+    /// Still unread at the provider. Triage can be narrowed to these — the question a digest
+    /// answers is what still needs attention, not what arrived.
+    public let isUnread: Bool
+    /// A promotion, a social notification, or spam: mail that is delivered TO you rather than
+    /// written FOR you. Hidden from triage rather than ranked last, because a list you have to
+    /// scroll past is not a list that got triaged.
+    ///
+    /// Decided by the mail source from the provider's own classification, so the domain never
+    /// learns a provider's label names.
+    public let isBulk: Bool
     /// The provider thread this belongs to.
     ///
     /// Read all the way through from Gmail and then dropped here, which meant a reply composed
@@ -95,6 +105,8 @@ public struct PlannerMailItem: Hashable, Sendable {
         receivedAt: Date,
         category: PlannerCategory,
         isPrivate: Bool,
+        isUnread: Bool = false,
+        isBulk: Bool = false,
         threadID: String? = nil
     ) {
         self.id = id
@@ -104,6 +116,8 @@ public struct PlannerMailItem: Hashable, Sendable {
         self.receivedAt = receivedAt
         self.category = category
         self.isPrivate = isPrivate
+        self.isUnread = isUnread
+        self.isBulk = isBulk
         self.threadID = threadID
     }
 }

@@ -2,7 +2,9 @@
 
 > A native macOS daily planning app with a local web UI, safety boundaries, and synthetic test fixtures.
 
-**Project status:** Phase One is complete. The read-only planning shell and its offline safety foundation are in place; the remaining integration work is documented below.
+**Public snapshot:** `0.2.0`
+
+**Project status:** Phase One is complete and Phase Two is in progress. The read-only planning shell is being extended with richer mail and task workflows while the offline safety foundation remains the release gate.
 
 If you build on this project, please credit **bhauw/Daily-Planner** and link back to this repository.
 
@@ -28,7 +30,7 @@ This repository contains disposable M0/M0.5 probes, the approved local-v1 archit
 
 The approved M2A plan authorizes the offline Google read-only foundation. Live Google access remains user-authorized; provider writes, vault-content access, and locked scheduling are not included. M1 remains the preserved offline shell until a live read-only canary is explicitly approved.
 
-## Phase One Status
+## Project Status
 
 ### Completed
 
@@ -37,6 +39,8 @@ The approved M2A plan authorizes the offline Google read-only foundation. Live G
 - Built the read-only planning shell with synthetic calendar, mail, and task fixtures.
 - Added offline acceptance coverage for the Swift and web layers.
 - Published only sanitized source, tests, synthetic fixtures, and project documentation.
+- Added the first in-context reply-drafting workflow and expanded mail workbench behavior.
+- Added user-made topic colors and task placement between existing schedule blocks.
 
 ### Partially Finished
 
@@ -44,13 +48,15 @@ The approved M2A plan authorizes the offline Google read-only foundation. Live G
 - Locked-state Keychain behavior remains an interactive verification item.
 - Sandboxed app/helper isolation is deferred to a future architecture pass.
 - Live provider content remains behind the connection boundary and is not used by automated tests.
+- The reply-drafting workflow still requires an explicitly configured assistant and user approval before any external action.
+- Packaging and release automation remain local development workflows rather than hosted CI.
 
 ### Next Steps
 
-1. Complete the user-authorized live read-only canary without recording credentials or provider content.
-2. Promote the read-only shell into the next integration phase with clear loading, error, and connection states.
-3. Revisit sandboxed app/helper isolation after the local-v1 architecture is stable.
-4. Expand public documentation with setup, testing, and contribution guidance using synthetic examples only.
+1. Add focused tests for reply drafting, mail state transitions, and the new task/topic workflows.
+2. Complete the user-authorized live read-only canary without recording credentials or provider content.
+3. Improve setup and local verification documentation using synthetic examples only.
+4. Revisit sandboxed app/helper isolation after the local-v1 architecture is stable.
 
 ## Read first
 

@@ -17,6 +17,25 @@ export interface ComposePrefill {
   inReplyTo?: string;
   /** Shown above the form so it is obvious what is being replied to. */
   context?: string;
+  /**
+   * The inbox message this is answering, when an assistant could draft against it.
+   *
+   * An ID only. The engine re-reads the message and builds the prompt from its own copy, so
+   * the rule that a private message is never transmitted holds against the provider's
+   * classification rather than against anything this client passes along.
+   */
+  draftFrom?: string;
+}
+
+/**
+ * Naming an event that already exists, so the desk MOVES it instead of creating one.
+ *
+ * Its presence is what switches the scheduler from "add" to "move": absent, the form creates a
+ * new event exactly as before. Both ids come from a read — the client never invents either.
+ */
+export interface MoveTarget {
+  eventId: string;
+  calendarId: string;
 }
 
 export interface SchedulePrefill {
@@ -27,4 +46,12 @@ export interface SchedulePrefill {
   location?: string;
   description?: string;
   context?: string;
+  /**
+   * Set to move the named event rather than create a new one.
+   *
+   * When it is present the form shows the title as text and drops Where and Notes, because the
+   * move route cannot change them — an editable field whose edits are discarded is worse than
+   * no field at all.
+   */
+  move?: MoveTarget;
 }

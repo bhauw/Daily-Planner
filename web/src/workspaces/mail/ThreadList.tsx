@@ -98,7 +98,7 @@ export function ThreadList({ rows, selectedId, onSelect }: ThreadListProps) {
               )}
               <span className="thread__summary">{row.draft.summary}</span>
               <span className="thread__meta">
-                <Tag label={p.tag} colorVar={p.colorVar} />
+                <Tag label={p.tag} colorVar={p.inkVar} />
                 <span className={["thread__status", `is-${row.status}`].join(" ")}>
                   {statusLabel(row.status)}
                 </span>

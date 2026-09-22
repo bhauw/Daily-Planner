@@ -41,7 +41,7 @@ final class GoogleWriteClientTests: XCTestCase {
 
     // MARK: - The allowlist
 
-    func testPolicyAcceptsExactlyTheTwoWriteEndpoints() throws {
+    func testPolicyAcceptsExactlyTheThreeWriteEndpoints() throws {
         // Break caught: a write endpoint is missing from the allowlist, so sending fails closed
         // with no explanation — or one was added with the wrong shape.
         try GoogleNetworkPolicy.validate(
@@ -53,6 +53,53 @@ final class GoogleWriteClientTests: XCTestCase {
         try GoogleNetworkPolicy.validate(
             writeRequest("https://www.googleapis.com/calendar/v3/calendars/calendar@example.test/events")
         )
+        // The move. A PATCH on ONE event, named by id.
+        try GoogleNetworkPolicy.validate(
+            writeRequest(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events/evt-1",
+                method: "PATCH"
+            )
+        )
+    }
+
+    func testTheMoveRouteIsBoundToPatchAndToASingleEvent() {
+        // Break caught: the verb and the path were allowlisted independently, so the new route
+        // widened the old one. Each entry below is the right path with the wrong verb, or the
+        // right verb with the wrong path — and each is a different capability if it got through.
+        let rejected: [URLRequest] = [
+            // PATCH on the COLLECTION would be a create with no id — refused, as before.
+            writeRequest("https://www.googleapis.com/calendar/v3/calendars/primary/events", method: "PATCH"),
+            // POST on ONE event is Google's "move to another calendar" shape. Not this app's.
+            writeRequest("https://www.googleapis.com/calendar/v3/calendars/primary/events/evt-1"),
+            // PUT would REPLACE the event with only the fields this app knows, silently
+            // clearing guests, description and recurrence. Never allowed.
+            writeRequest("https://www.googleapis.com/calendar/v3/calendars/primary/events/evt-1", method: "PUT"),
+            // Delete remains entirely out of scope.
+            writeRequest("https://www.googleapis.com/calendar/v3/calendars/primary/events/evt-1", method: "DELETE"),
+            // `sendUpdates` on a move mails every attendee that the meeting shifted. Still
+            // unreachable, because no query is permitted on any write.
+            writeRequest(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events/evt-1?sendUpdates=all",
+                method: "PATCH"
+            ),
+            // Opening PATCH must not open it anywhere else.
+            writeRequest("https://gmail.googleapis.com/gmail/v1/users/me/messages/abc", method: "PATCH"),
+            writeRequest("https://tasks.googleapis.com/tasks/v1/lists/abc/tasks/t-1", method: "PATCH"),
+            // A further segment is not an event id.
+            writeRequest(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events/evt-1/instances",
+                method: "PATCH"
+            ),
+            // An empty id, and a traversal dressed as one.
+            writeRequest("https://www.googleapis.com/calendar/v3/calendars/primary/events/", method: "PATCH"),
+            writeRequest("https://www.googleapis.com/calendar/v3/calendars/primary/events/..", method: "PATCH"),
+        ]
+        for request in rejected {
+            XCTAssertThrowsError(
+                try GoogleNetworkPolicy.validate(request),
+                "must be refused: \(request.httpMethod ?? "?") \(request.url?.absoluteString ?? "?")"
+            )
+        }
     }
 
     func testPolicyRejectsEverythingAdjacentToAWrite() {
@@ -301,6 +348,77 @@ final class GoogleWriteClientTests: XCTestCase {
         // No echo in the response, so the requested times stand.
         XCTAssertEqual(created.start, start)
         XCTAssertEqual(created.end, start.addingTimeInterval(3_600))
+    }
+
+    // MARK: - Moving an event that already exists
+
+    func testMovePatchesOneEventAndSendsOnlyTheTimes() async throws {
+        // Break caught: the move sends more than the times. A patch body is a list of fields to
+        // change, so anything extra here is a field silently overwritten on the user's real
+        // event — the exact failure "Move it" existed to avoid.
+        let transport = Transport()
+        transport.data = Data(#"""
+        {"id":"evt-1","htmlLink":"https://calendar.google.com/e/1",
+         "start":{"dateTime":"2026-09-16T18:00:00Z"},"end":{"dateTime":"2026-09-16T19:00:00Z"}}
+        """#.utf8)
+        let start = Date(timeIntervalSince1970: 1_789_000_000)
+        let move = try PlannerEventMove(
+            eventID: "evt-1",
+            calendarID: CalendarID(rawValue: "calendar@example.test"),
+            start: start,
+            end: start.addingTimeInterval(3_600)
+        )
+        let moved = try await GoogleCalendarWriteClient(transport: transport).move(move, accessToken: token)
+
+        let request = try XCTUnwrap(transport.sent.first)
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://www.googleapis.com/calendar/v3/calendars/calendar@example.test/events/evt-1"
+        )
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any]
+        )
+        // Exactly two keys. Not "these two are present" — these two and no others.
+        XCTAssertEqual(Set(payload.keys), ["start", "end"])
+        XCTAssertNil(payload["summary"])
+        XCTAssertNil(payload["attendees"])
+
+        // The echo wins, same as the insert: the user is told where the event actually landed.
+        XCTAssertEqual(moved.id, "evt-1")
+        XCTAssertEqual(RFC3339.string(from: moved.start), "2026-09-16T18:00:00Z")
+        XCTAssertEqual(moved.link, "https://calendar.google.com/e/1")
+    }
+
+    func testAMoveWithNoEchoKeepsTheRequestedTimes() async throws {
+        let transport = Transport()
+        transport.data = Data(#"{"id":"evt-2"}"#.utf8)
+        let start = Date(timeIntervalSince1970: 1_789_000_000)
+        let move = try PlannerEventMove(
+            eventID: "evt-2", calendarID: CalendarID(rawValue: "primary"),
+            start: start, end: start.addingTimeInterval(1_800)
+        )
+        let moved = try await GoogleCalendarWriteClient(transport: transport).move(move, accessToken: token)
+        XCTAssertEqual(moved.start, start)
+        XCTAssertEqual(moved.end, start.addingTimeInterval(1_800))
+    }
+
+    func testAMoveRefusedByGoogleIsReportedAsRefusedNotRetried() async {
+        // 404 is the shape a stale event id takes. It is a refusal the user can act on, never
+        // something to retry — a retried move against a wrong id is a second wrong write.
+        let transport = Transport()
+        transport.status = 404
+        let start = Date(timeIntervalSince1970: 1_789_000_000)
+        let move = try! PlannerEventMove(
+            eventID: "gone", calendarID: CalendarID(rawValue: "primary"),
+            start: start, end: start.addingTimeInterval(3_600)
+        )
+        await XCTAssertThrowsErrorAsync(
+            try await GoogleCalendarWriteClient(transport: transport).move(move, accessToken: token)
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarWriteClientError, .refused)
+            XCTAssertEqual((error as? GoogleCalendarWriteClientError)?.writeOutcome, .refused)
+        }
     }
 
     // MARK: - Helpers

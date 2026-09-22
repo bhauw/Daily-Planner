@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Planner — Navigation shell options</title>
+<style>
+:root{
+  /* Sampled from the running app, not invented */
+  --bg:#1E1E1E;
+  --chrome:#232221;
+  --rail:#413326;
+  --surface:#252525;
+  --surface-2:#2C2C2C;
+  --border:#333331;
+  --border-soft:#2A2A29;
+  --text:#FFFFFF;
+  --text-2:#98989D;
+  --text-3:#6E6E73;
+
+  /* Functional category colors — fixed by the brief */
+  --school:#0A84FF;
+  --deadline:#B39EEB;
+  --extracurricular:#30D158;
+  --career:#FFD60A;
+  --personal:#FF00FF;
+  --warn:#FF9F0A;
+
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:#141413;color:var(--text);
+  font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.page{max-width:1340px;margin:0 auto;padding:48px 24px 96px}
+
+/* ---------- page header ---------- */
+.masthead{border-bottom:1px solid var(--border);padding-bottom:28px;margin-bottom:12px}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text-3);margin:0 0 10px
+}
+h1{font-size:30px;line-height:1.2;letter-spacing:-.02em;margin:0 0 12px;font-weight:600}
+.lede{color:var(--text-2);max-width:68ch;margin:0}
+.tokenstrip{display:flex;flex-wrap:wrap;gap:6px;margin-top:20px}
+.tok{
+  display:flex;align-items:center;gap:7px;background:var(--surface);
+  border:1px solid var(--border);border-radius:6px;padding:5px 10px;
+  font-family:var(--mono);font-size:11px;color:var(--text-2)
+}
+.sw{width:11px;height:11px;border-radius:3px;border:1px solid rgba(255,255,255,.14)}
+
+/* ---------- option blocks ---------- */
+.opt{margin-top:56px}
+.opt-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;flex-wrap:wrap}
+.opt-key{
+  font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--text-2);
+  border-radius:4px;padding:2px 8px;font-weight:600
+}
+.opt h2{font-size:19px;margin:0;font-weight:600;letter-spacing:-.01em}
+.opt .verdict{
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--text-3)
+}
+.verdict.best{color:var(--extracurricular);border-color:rgba(48,209,88,.4)}
+.opt .why{color:var(--text-2);margin:0 0 18px;max-width:78ch}
+.opt .why b{color:var(--text);font-weight:600}
+
+/* ---------- app window chrome ---------- */
+.win{
+  width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;
+  overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.45)
+}
+.titlebar{
+  background:var(--chrome);height:38px;display:flex;align-items:center;gap:8px;
+  padding:0 14px;border-bottom:1px solid var(--border-soft)
+}
+.dots{display:flex;gap:7px}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot.r{background:#FF5F57}.dot.y{background:#FEBC2E}.dot.g{background:#28C840}
+.wintitle{font-size:12.5px;font-weight:600;color:var(--text-2);margin-left:6px}
+.saferail{
+  background:var(--rail);display:flex;align-items:center;gap:8px;
+  padding:7px 14px;font-size:12px;font-weight:600;color:#F0D9B8;
+  border-bottom:1px solid var(--border-soft)
+}
+.saferail .spacer{flex:1}
+.pill{
+  background:rgba(255,255,255,.1);border-radius:5px;padding:3px 9px;
+  font-size:11px;font-weight:500;color:#F0D9B8
+}
+
+/* ---------- shared column bits ---------- */
+.colhead{padding:14px 16px 10px}
+.colhead .lbl{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:4px
+}
+.colhead .ttl{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.colhead h3{font-size:17px;margin:0;font-weight:600;letter-spacing:-.01em}
+.colhead .count{font-family:var(--mono);font-size:11px;color:var(--text-3)}
+
+.item{
+  display:flex;gap:10px;padding:9px 16px;border-left:2px solid transparent;
+  align-items:flex-start
+}
+.item + .item{border-top:1px solid var(--border-soft)}
+.item:hover{background:var(--surface)}
+.chip{width:3px;align-self:stretch;border-radius:2px;min-height:30px;flex:0 0 3px}
+.item .body{min-width:0;flex:1}
+.item .t{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .m{font-size:11.5px;color:var(--text-3);margin-top:2px;display:flex;gap:6px;align-items:center}
+.item .m .time{font-family:var(--mono)}
+.tag{
+  font-size:10px;font-family:var(--mono);letter-spacing:.04em;padding:1px 5px;
+  border-radius:3px;border:1px solid currentColor;opacity:.85
+}
+
+/* ---------- dayline (the signature element) ---------- */
+.dayline{padding:4px 16px 16px}
+.slot{display:grid;grid-template-columns:44px 1fr;gap:10px;min-height:38px}
+.slot .hr{
+  font-family:var(--mono);font-size:10.5px;color:var(--text-3);
+  padding-top:9px;text-align:right;font-variant-numeric:tabular-nums
+}
+.slot .lane{border-top:1px solid var(--border-soft);padding:5px 0;position:relative}
+.blk{
+  border-radius:5px;padding:5px 9px;font-size:12px;font-weight:500;
+  border-left:3px solid;background:var(--surface)
+}
+.blk .sub{font-size:10.5px;color:var(--text-3);font-family:var(--mono);margin-top:1px}
+.blk.free{background:transparent;border:1px dashed var(--border);color:var(--text-3);font-weight:400}
+.pressure{
+  display:flex;align-items:center;gap:8px;padding:8px 16px;
+  border-top:1px solid var(--border-soft);font-size:11.5px;color:var(--text-2)
+}
+.bar{flex:1;height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:2px}
+
+/* ---------- assistant ---------- */
+.astat{padding:14px 16px}
+.astat .row{display:flex;gap:9px;align-items:flex-start;margin-bottom:11px;font-size:12.5px}
+.astat .row .ic{width:14px;flex:0 0 14px;color:var(--text-3);margin-top:1px}
+.draftcard{
+  background:var(--surface);border:1px solid var(--border);border-radius:7px;
+  padding:10px 11px;margin-top:10px
+}
+.draftcard .dt{font-size:12px;font-weight:600;margin-bottom:3px}
+.draftcard .dp{font-size:11.5px;color:var(--text-3);line-height:1.45}
+.btnrow{display:flex;gap:6px;margin-top:9px}
+.btn{
+  font-size:11.5px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text);font-weight:500
+}
+.btn.p{background:#0A84FF;border-color:#0A84FF;color:#fff}
+
+/* ---------- A: sidebar ---------- */
+.shellA{display:grid;grid-template-columns:186px 1fr;height:620px}
+.sidebar{background:var(--chrome);border-right:1px solid var(--border-soft);padding:12px 8px;display:flex;flex-direction:column}
+.navsec{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-3);padding:12px 10px 6px
+}
+.nav{
+  display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;
+  font-size:13px;color:var(--text-2);margin-bottom:1px
+}
+.nav.on{background:rgba(10,132,255,.16);color:#fff;font-weight:600}
+.nav .badge{
+  margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text-3);
+  background:var(--surface-2);border-radius:4px;padding:0 5px
+}
+.nav.on .badge{background:rgba(255,255,255,.16);color:#fff}
+.glyph{width:16px;height:16px;flex:0 0 16px;opacity:.85}
+.threecol{display:grid;grid-template-columns:1fr 1fr 290px}
+.threecol > div + div{border-left:1px solid var(--border-soft)}
+.scroll{overflow:hidden}
+
+/* ---------- B: windows ---------- */
+.stage{position:relative;height:660px;background:
+  radial-gradient(1100px 380px at 50% 0%, #1b1b1a 0%, #141413 70%);
+  border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.floatwin{position:absolute;border-radius:9px;overflow:hidden;border:1px solid var(--border);
+  box-shadow:0 22px 60px rgba(0,0,0,.6);background:var(--bg)}
+.fw-main{left:22px;top:30px;width:720px}
+.fw-2{right:26px;top:96px;width:470px}
+.fw-3{right:96px;bottom:26px;width:400px}
+.mini-title{background:var(--chrome);height:32px;display:flex;align-items:center;gap:7px;padding:0 11px;border-bottom:1px solid var(--border-soft)}
+.mini-title .dot{width:9px;height:9px}
+.mini-title .wintitle{font-size:11.5px;margin-left:4px}
+
+/* ---------- C: expand in place ---------- */
+.expand-wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.step-label{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-3);margin:0 0 8px
+}
+.ghost{opacity:.34;filter:saturate(.5)}
+.expanding{outline:1.5px solid rgba(10,132,255,.55);outline-offset:-1.5px;position:relative}
+.expanding::after{
+  content:"expands";position:absolute;top:8px;right:8px;font-family:var(--mono);
+  font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#0A84FF;
+  background:rgba(10,132,255,.14);padding:2px 6px;border-radius:4px
+}
+
+/* ---------- D: tabs ---------- */
+.tabbar{display:flex;gap:2px;background:var(--chrome);padding:0 10px;border-bottom:1px solid var(--border-soft)}
+.tab{
+  padding:8px 15px;font-size:12.5px;color:var(--text-3);border-bottom:2px solid transparent;
+  display:flex;align-items:center;gap:7px
+}
+.tab.on{color:#fff;border-bottom-color:#0A84FF;font-weight:600}
+.tab .badge{font-family:var(--mono);font-size:10px;background:var(--surface-2);border-radius:3px;padding:0 4px;color:var(--text-3)}
+
+/* ---------- tradeoff table ---------- */
+.tradeoffs{margin-top:72px;border-top:1px solid var(--border);padding-top:28px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:16px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border-soft);vertical-align:top}
+th{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-3);font-weight:500
+}
+td.k{font-weight:600;white-space:nowrap}
+.yes{color:var(--extracurricular)}.no{color:#FF6B6B}.mid{color:var(--warn)}
+.note{margin-top:22px;padding:14px 16px;background:var(--surface);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;color:var(--text-2);font-size:13px}
+.note b{color:var(--text)}
+@media (max-width:900px){.expand-wrap{grid-template-columns:1fr}.shellA{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <p class="eyebrow">Daily Planner · Web + WKWebView shell</p>
+    <h1>Four ways to hold the workspaces</h1>
+    <p class="lede">Same content in every frame, so navigation is the only variable you're judging. Colors are sampled from your running app; category colors are the ones fixed in your brief. Type is the native stack, with SF&nbsp;Mono reserved for times and counts so the dayline's gutter aligns.</p>
+    <div class="tokenstrip">
+      <span class="tok"><i class="sw" style="background:#1E1E1E"></i>#1E1E1E bg</span>
+      <span class="tok"><i class="sw" style="background:#232221"></i>#232221 chrome</span>
+      <span class="tok"><i class="sw" style="background:#413326"></i>#413326 rail</span>
+      <span class="tok"><i class="sw" style="background:#0A84FF"></i>school</span>
+      <span class="tok"><i class="sw" style="background:#B39EEB"></i>deadline</span>
+      <span class="tok"><i class="sw" style="background:#30D158"></i>extracurricular</span>
+      <span class="tok"><i class="sw" style="background:#FFD60A"></i>career</span>
+      <span class="tok"><i class="sw" style="background:#FF00FF"></i>personal</span>
+    </div>
+  </div>
+
+  <!-- ============ OPTION A ============ -->
+  <section class="opt">
+    <div class="opt-head">
+      <span class="opt-key">A</span>
+      <h2>Sidebar rail</h2>
+      <span class="verdict best">Recommended</span>
+    </div>
+    <p class="why">One window, a persistent rail, and the assistant stays docked on the right no matter which surface you're in. <b>Today</b> is your existing three-column shell; Mail, Calendar and Tasks are full workspaces you switch into. The rail is also where unread and pending counts live, so you can see what's waiting without leaving the day.</p>
+
+    <div class="win">
+      <div class="titlebar"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Daily Planner</span></div>
+      <div class="saferail">
+        <span>🔒</span><span>Read-only · no external writes</span>
+        <span class="spacer"></span><span class="pill">Last scan 12:00</span>
+      </div>
+      <div class="shellA">
+        <nav class="sidebar">
+          <div class="navsec">Plan</div>
+          <div class="nav on"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>Today</div>
+          <div class="nav"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v6l4 2"/><circle cx="8" cy="8" r="6"/></svg>Focus</div>
+          <div class="nav"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h7"/></svg>Digest</div>
+          <div class="navsec">Sources</div>
+          <div class="nav"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3.5" width="12" height="9" rx="2"/><path d="m2.5 5 5.5 4 5.5-4"/></svg>Mail<span class="badge">12</span></div>
+          <div class="nav"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>Calendar</div>
+          <div class="nav"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5 6 11l7-7"/><path d="M3 13h10"/></svg>Tasks<span class="badge">9</span></div>
+          <div style="flex:1"></div>
+          <div class="nav"><svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2"/></svg>Settings</div>
+        </nav>
+
+        <div class="threecol">
+          <div class="scroll">
+            <div class="colhead">
+              <div class="lbl">Priority</div>
+              <div class="ttl"><h3>Up next</h3><span class="count">5 items</span></div>
+            </div>
+            <div class="item"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t">Example Corp Audit Co-op — interview time</div><div class="m"><span class="tag" style="color:var(--career)">CAREER</span><span>Reply needed today</span></div></div></div>
+            <div class="item"><i class="chip" style="background:var(--deadline)"></i><div class="body"><div class="t">INDG 101 — Assignment 3</div><div class="m"><span class="tag" style="color:var(--deadline)">DEADLINE</span><span class="time">Fri 23:59</span></div></div></div>
+            <div class="item"><i class="chip" style="background:var(--school)"></i><div class="body"><div class="t">ECON 250 — Midterm 2 review posted</div><div class="m"><span class="tag" style="color:var(--school)">SCHOOL</span><span class="time">Thu 14:30</span></div></div></div>
+            <div class="item"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t">Example Consulting coffee chat — reschedule ask</div><div class="m"><span class="tag" style="color:var(--career)">CAREER</span><span>2 slots free</span></div></div></div>
+            <div class="item"><i class="chip" style="background:var(--extracurricular)"></i><div class="body"><div class="t">Investment Club — pitch night sign-up</div><div class="m"><span class="tag" style="color:var(--extracurricular)">EXTRA</span><span class="time">Wed 17:00</span></div></div></div>
+          </div>
+
+          <div class="scroll">
+            <div class="colhead">
+              <div class="lbl">Today</div>
+              <div class="ttl"><h3>Monday, Sept 14</h3><span class="count">5 blocks</span></div>
+            </div>
+            <div class="dayline">
+              <div class="slot"><div class="hr">09:00</div><div class="lane"><div class="blk" style="border-color:var(--school)">ECON 250 Lecture<div class="sub">AQ 3150 · 80 min</div></div></div></div>
+              <div class="slot"><div class="hr">11:00</div><div class="lane"><div class="blk" style="border-color:var(--deadline)">Focus — Assignment 3<div class="sub">flexible · movable</div></div></div></div>
+              <div class="slot"><div class="hr">13:30</div><div class="lane"><div class="blk" style="border-color:var(--career)">Coffee chat — Example Consulting<div class="sub">Example Cafe · 45 min · +25 transit</div></div></div></div>
+              <div class="slot"><div class="hr">15:00</div><div class="lane"><div class="blk" style="border-color:var(--extracurricular)">Investment Club<div class="sub">SUB 2270 · 60 min</div></div></div></div>
+              <div class="slot"><div class="hr">18:00</div><div class="lane"><div class="blk free">Free until 21:00</div></div></div>
+            </div>
+            <div class="pressure"><span>Workload</span><span class="bar"><i style="width:72%;background:linear-gradient(90deg,#FFD60A,#FF9F0A)"></i></span><span style="font-family:var(--mono)">High · 2 back-to-back</span></div>
+          </div>
+
+          <div class="scroll" style="background:#212121">
+            <div class="colhead">
+              <div class="lbl">Assistant</div>
+              <div class="ttl"><h3>Ready</h3><span class="count">3 drafts</span></div>
+            </div>
+            <div class="astat">
+              <div class="row"><span class="ic">✓</span><div>Nothing sent without your approval.</div></div>
+              <div class="row"><span class="ic">◷</span><div>Next scan 21:00 · Vancouver</div></div>
+              <div class="draftcard">
+                <div class="dt">Reply — Example Corp recruiter</div>
+                <div class="dp">Confirms Thursday 14:30, notes the ECON 250 midterm conflict, proposes Friday 10:00 instead.</div>
+                <div class="btnrow"><span class="btn p">Review</span><span class="btn">Edit</span></div>
+              </div>
+              <div class="draftcard">
+                <div class="dt">Calendar + Task bundle</div>
+                <div class="dp">Creates the Example Consulting chat, a prep task, and a 25-minute transit buffer.</div>
+                <div class="btnrow"><span class="btn p">Review</span><span class="btn">Edit</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPTION B ============ -->
+  <section class="opt">
+    <div class="opt-head">
+      <span class="opt-key">B</span>
+      <h2>Separate windows</h2>
+      <span class="verdict">Most macOS-native</span>
+    </div>
+    <p class="why">Each workspace is a real window you can throw onto a second monitor — planning shell on one screen, draft workbench on the other. Genuinely the most Mac-like answer, and the best one if you work on an external display. The cost is that <b>WKWebView makes multi-window meaningfully harder</b>: each window is its own web view with its own state, so they need a shared store and explicit sync.</p>
+
+    <div class="stage">
+      <div class="floatwin fw-main">
+        <div class="mini-title"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Daily Planner — Today</span></div>
+        <div class="saferail" style="font-size:11px;padding:6px 12px"><span>🔒</span><span>Read-only · no external writes</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;height:330px">
+          <div>
+            <div class="colhead"><div class="lbl">Priority</div><div class="ttl"><h3 style="font-size:15px">Up next</h3><span class="count">5</span></div></div>
+            <div class="item"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t">Example Corp Audit Co-op</div><div class="m"><span class="time">Reply today</span></div></div></div>
+            <div class="item"><i class="chip" style="background:var(--deadline)"></i><div class="body"><div class="t">INDG 101 — Assignment 3</div><div class="m"><span class="time">Fri 23:59</span></div></div></div>
+            <div class="item"><i class="chip" style="background:var(--school)"></i><div class="body"><div class="t">ECON 250 — Midterm 2</div><div class="m"><span class="time">Thu 14:30</span></div></div></div>
+          </div>
+          <div style="border-left:1px solid var(--border-soft)">
+            <div class="colhead"><div class="lbl">Today</div><div class="ttl"><h3 style="font-size:15px">Mon, Sept 14</h3></div></div>
+            <div class="dayline">
+              <div class="slot"><div class="hr">09:00</div><div class="lane"><div class="blk" style="border-color:var(--school)">ECON 250 Lecture</div></div></div>
+              <div class="slot"><div class="hr">11:00</div><div class="lane"><div class="blk" style="border-color:var(--deadline)">Focus — Assignment 3</div></div></div>
+              <div class="slot"><div class="hr">13:30</div><div class="lane"><div class="blk" style="border-color:var(--career)">Coffee chat — Example Consulting</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="floatwin fw-2">
+        <div class="mini-title"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Draft workbench</span></div>
+        <div style="padding:12px 14px;height:250px">
+          <div class="draftcard" style="margin-top:0">
+            <div class="dt">Reply — Example Corp recruiter</div>
+            <div class="dp">Confirms Thursday 14:30, flags the midterm conflict, proposes Friday 10:00.</div>
+            <div class="btnrow"><span class="btn p">Approve</span><span class="btn">Edit</span><span class="btn">Reject</span></div>
+          </div>
+          <div class="draftcard">
+            <div class="dt">Reply — Example Consulting associate</div>
+            <div class="dp">Accepts the reschedule, offers two windows that clear your 9–6 rule.</div>
+            <div class="btnrow"><span class="btn p">Approve</span><span class="btn">Edit</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="floatwin fw-3">
+        <div class="mini-title"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Tasks</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;height:170px;font-size:11px">
+          <div><div class="colhead" style="padding:10px 12px 6px"><div class="lbl" style="color:var(--school)">School</div></div>
+            <div class="item" style="padding:6px 12px"><i class="chip" style="background:var(--deadline)"></i><div class="body"><div class="t" style="font-size:11.5px">Assignment 3</div></div></div>
+            <div class="item" style="padding:6px 12px"><i class="chip" style="background:var(--school)"></i><div class="body"><div class="t" style="font-size:11.5px">Midterm review</div></div></div>
+          </div>
+          <div style="border-left:1px solid var(--border-soft)"><div class="colhead" style="padding:10px 12px 6px"><div class="lbl" style="color:var(--career)">Career</div></div>
+            <div class="item" style="padding:6px 12px"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t" style="font-size:11.5px">Prep Example Corp STAR</div></div></div>
+            <div class="item" style="padding:6px 12px"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t" style="font-size:11.5px">Thank-you note</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPTION C ============ -->
+  <section class="opt">
+    <div class="opt-head">
+      <span class="opt-key">C</span>
+      <h2>Expand in place</h2>
+      <span class="verdict">Fewest concepts</span>
+    </div>
+    <p class="why">Click a column and it grows to fill the shell as the full workspace, then collapses back. You never lose your place and there's no navigation model to learn. The catch: there's <b>nowhere to put a persistent nav</b>, so the three source workspaces are only reachable from the columns that happen to reference them — and a draft workbench isn't any column's child.</p>
+
+    <div class="expand-wrap">
+      <div>
+        <p class="step-label">Before — click Today</p>
+        <div class="win">
+          <div class="titlebar"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Daily Planner</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:290px">
+            <div class="ghost"><div class="colhead"><div class="lbl">Priority</div><div class="ttl"><h3 style="font-size:15px">Up next</h3></div></div>
+              <div class="item"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t">Example Corp Audit Co-op</div></div></div>
+              <div class="item"><i class="chip" style="background:var(--deadline)"></i><div class="body"><div class="t">Assignment 3</div></div></div>
+            </div>
+            <div class="expanding" style="border-left:1px solid var(--border-soft);border-right:1px solid var(--border-soft)">
+              <div class="colhead"><div class="lbl">Today</div><div class="ttl"><h3 style="font-size:15px">Mon, Sept 14</h3></div></div>
+              <div class="dayline">
+                <div class="slot"><div class="hr">09:00</div><div class="lane"><div class="blk" style="border-color:var(--school)">ECON 250</div></div></div>
+                <div class="slot"><div class="hr">11:00</div><div class="lane"><div class="blk" style="border-color:var(--deadline)">Focus block</div></div></div>
+                <div class="slot"><div class="hr">13:30</div><div class="lane"><div class="blk" style="border-color:var(--career)">Example Consulting chat</div></div></div>
+              </div>
+            </div>
+            <div class="ghost"><div class="colhead"><div class="lbl">Assistant</div><div class="ttl"><h3 style="font-size:15px">Ready</h3></div></div>
+              <div class="astat"><div class="row"><span class="ic">✓</span><div>3 drafts waiting</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="step-label">After — Calendar workspace fills the shell</p>
+        <div class="win">
+          <div class="titlebar"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Daily Planner — Calendar</span></div>
+          <div style="height:290px;display:flex;flex-direction:column">
+            <div class="colhead" style="display:flex;justify-content:space-between;align-items:center">
+              <div><div class="lbl">Calendar · week</div><div class="ttl"><h3 style="font-size:15px">Sept 14 – 20</h3></div></div>
+              <span class="btn">↩ Back to Today</span>
+            </div>
+            <div style="display:grid;grid-template-columns:34px repeat(5,1fr);gap:1px;padding:0 14px 14px;flex:1;font-size:10px">
+              <div></div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:center">MON</div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:center">TUE</div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:center">WED</div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:center">THU</div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:center">FRI</div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:right;padding-right:4px">09</div>
+              <div style="background:var(--school);border-radius:3px;padding:3px;color:#fff">ECON 250</div><div></div>
+              <div style="background:var(--school);border-radius:3px;padding:3px;color:#fff">ECON 250</div><div></div><div></div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:right;padding-right:4px">11</div>
+              <div style="background:var(--deadline);border-radius:3px;padding:3px;color:#1E1E1E">Focus</div><div></div><div></div>
+              <div style="background:var(--deadline);border-radius:3px;padding:3px;color:#1E1E1E">Focus</div><div></div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:right;padding-right:4px">13</div>
+              <div style="background:var(--career);border-radius:3px;padding:3px;color:#1E1E1E">Example Consulting</div><div></div><div></div>
+              <div style="background:var(--school);border-radius:3px;padding:3px;color:#fff">Midterm</div><div></div>
+              <div style="color:var(--text-3);font-family:var(--mono);text-align:right;padding-right:4px">15</div>
+              <div style="background:var(--extracurricular);border-radius:3px;padding:3px;color:#1E1E1E">Club</div><div></div><div></div><div></div>
+              <div style="border:1px dashed var(--border);border-radius:3px;color:var(--text-3);padding:3px">free</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPTION D ============ -->
+  <section class="opt">
+    <div class="opt-head">
+      <span class="opt-key">D</span>
+      <h2>Top tabs</h2>
+      <span class="verdict">Simplest to build</span>
+    </div>
+    <p class="why">Browser-style tabs in one window. Fastest to implement and instantly familiar — but it spends your vertical space on chrome, and it's the weakest at <b>keeping the day visible while you work a surface</b>, which is the whole reason the planner exists. Your brief's rule that mode switching must not reset mental context is hardest to honour here.</p>
+
+    <div class="win">
+      <div class="titlebar"><div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div><span class="wintitle">Daily Planner</span></div>
+      <div class="tabbar">
+        <div class="tab">Today</div>
+        <div class="tab on">Mail <span class="badge">12</span></div>
+        <div class="tab">Calendar</div>
+        <div class="tab">Tasks <span class="badge">9</span></div>
+      </div>
+      <div class="saferail"><span>🔒</span><span>Read-only · no external writes</span><span class="spacer"></span><span class="pill">Draft workbench</span></div>
+      <div style="display:grid;grid-template-columns:260px 1fr 280px;height:330px">
+        <div>
+          <div class="colhead"><div class="lbl">Threads</div><div class="ttl"><h3 style="font-size:15px">Needs reply</h3><span class="count">12</span></div></div>
+          <div class="item"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t">Example Corp — interview time</div><div class="m"><span class="time">08:42</span></div></div></div>
+          <div class="item"><i class="chip" style="background:var(--career)"></i><div class="body"><div class="t">Example Consulting — reschedule</div><div class="m"><span class="time">Yest</span></div></div></div>
+          <div class="item"><i class="chip" style="background:var(--school)"></i><div class="body"><div class="t">ECON 250 — TA office hours</div><div class="m"><span class="time">Yest</span></div></div></div>
+        </div>
+        <div style="border-left:1px solid var(--border-soft);border-right:1px solid var(--border-soft);padding:14px 16px">
+          <div class="lbl" style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3);margin-bottom:6px">Draft · reply</div>
+          <div style="font-size:15px;font-weight:600;margin-bottom:10px">Re: Example Corp Audit Co-op — interview time</div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:12px;font-size:12.5px;color:var(--text-2);line-height:1.6">
+            Hi Sarah,<br><br>Thank you for the invitation. Thursday at 2:30 unfortunately overlaps my ECON 250 midterm. Would Friday at 10:00 work instead? I'm otherwise flexible that day.<br><br>Best,<br>Braxton
+          </div>
+          <div class="btnrow" style="margin-top:12px"><span class="btn p">Approve send</span><span class="btn">Edit</span><span class="btn">Reject</span></div>
+        </div>
+        <div style="background:#212121">
+          <div class="colhead"><div class="lbl">Context used</div></div>
+          <div class="astat">
+            <div class="row"><span class="ic">◆</span><div>Thread · 3 messages</div></div>
+            <div class="row"><span class="ic">◆</span><div>Calendar · Thu 14:30 conflict</div></div>
+            <div class="row"><span class="ic">◆</span><div>Vault · 1 recruiting note</div></div>
+            <div class="row" style="color:var(--warn)"><span class="ic">⚠</span><div>Sending is irreversible.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TRADEOFFS ============ -->
+  <section class="tradeoffs">
+    <h2 style="font-size:19px;margin:0 0 4px;font-weight:600">What each one costs you</h2>
+    <p class="lede" style="font-size:13px">Judged against the rules already in your brief, not general taste.</p>
+    <table>
+      <tr><th>Test</th><th>A · Sidebar</th><th>B · Windows</th><th>C · Expand</th><th>D · Tabs</th></tr>
+      <tr><td class="k">Day stays visible while working a surface</td><td class="yes">Yes — assistant + rail persist</td><td class="yes">Yes — if you have two screens</td><td class="no">No — it replaces the shell</td><td class="no">No — tab swap hides it</td></tr>
+      <tr><td class="k">"Switching never resets context"</td><td class="yes">Holds</td><td class="mid">Holds, needs cross-window sync</td><td class="yes">Holds</td><td class="mid">Hardest to honour</td></tr>
+      <tr><td class="k">Home for the draft workbench</td><td class="yes">Own nav item</td><td class="yes">Own window</td><td class="no">No natural parent</td><td class="yes">Own tab</td></tr>
+      <tr><td class="k">Room for counts / pending badges</td><td class="yes">In the rail</td><td class="mid">Per-window only</td><td class="no">Nowhere</td><td class="yes">On tabs</td></tr>
+      <tr><td class="k">WKWebView build cost</td><td class="yes">Low — one web view</td><td class="no">High — N views + shared store</td><td class="yes">Low</td><td class="yes">Lowest</td></tr>
+      <tr><td class="k">Scales to a 5th surface later</td><td class="yes">Add a rail row</td><td class="mid">Another window</td><td class="no">Doesn't</td><td class="mid">Tabs get crowded</td></tr>
+    </table>
+
+    <div class="note">
+      <b>Two things I found in the code while building this.</b> Your brief says Finance should be lavender, but <code>PlannerPalette.swift</code> returns the <i>career</i> colour (yellow) for <code>.finance</code> — so finance items are currently mis-coloured. And <code>personal</code> uses <code>NSColor.magenta</code> (#FF00FF), which passes contrast at 5.3:1 but is the one harsh note in an otherwise calm palette. Both are small fixes worth making during the port rather than carrying across.
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

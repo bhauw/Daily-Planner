@@ -55,3 +55,24 @@ public struct GoogleCalendarScheduler: PlannerEventScheduling, Sendable {
         return try await client.create(resolved, accessToken: token)
     }
 }
+
+
+/// Adapts the calendar write client to the planner's rescheduling port.
+///
+/// No default calendar here, deliberately. `GoogleCalendarScheduler` may fall back to a
+/// configured calendar because a new event has to go somewhere; a move has nowhere to fall back
+/// to, since the event is already on exactly one calendar and the caller read it from there.
+public struct GoogleCalendarRescheduler: PlannerEventRescheduling, Sendable {
+    private let client: GoogleCalendarWriteClient
+    private let tokens: any GoogleAccessTokenProviding
+
+    public init(client: GoogleCalendarWriteClient, tokens: any GoogleAccessTokenProviding) {
+        self.client = client
+        self.tokens = tokens
+    }
+
+    public func move(_ move: PlannerEventMove) async throws -> PlannerScheduledEvent {
+        let token = try await tokens.accessToken()
+        return try await client.move(move, accessToken: token)
+    }
+}

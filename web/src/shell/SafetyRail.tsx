@@ -11,12 +11,18 @@
  *
  * The lock icon follows the same rule — a closed padlock over an app that can
  * send mail is the picture version of the same false claim.
+ *
+ * Drafting is stated SEPARATELY from writes, because it is a different promise.
+ * `safety.mode` answers "what may this app do to my account"; `assist` answers
+ * "where does my content go". An app that can send mail but drafts nothing, and
+ * one that drafts through a local model but cannot send, are both real
+ * configurations, and folding them into one sentence would describe neither.
  */
 
 import { LockIcon, UnlockIcon } from "./icons";
 import { Button } from "../components/Button";
 import { SettingsIcon } from "./icons";
-import type { Safety, Source } from "../api/client";
+import type { Assist, Safety, Source } from "../api/client";
 import "./safety-rail.css";
 
 /** Shown until /api/settings answers. The cautious claim is the one to make while unsure. */
@@ -41,10 +47,22 @@ interface SafetyRailProps {
    * apart. Null means unknown, and we say nothing rather than claim the account is connected.
    */
   source?: Source | null;
+  /**
+   * The assistant, when one is wired. Its own pill rather than part of the main label: this is
+   * the only thing in the app that sends the user's content somewhere that is not Google, and
+   * it should not be readable as a footnote to the write mode.
+   */
+  assist?: Assist | null;
   onOpenSettings?: () => void;
 }
 
-export function SafetyRail({ lastScan, safety, source, onOpenSettings }: SafetyRailProps) {
+export function SafetyRail({
+  lastScan,
+  safety,
+  source,
+  assist,
+  onOpenSettings,
+}: SafetyRailProps) {
   // Keyed off `live`, not `kind`, so an unrecognised future source is treated as not-live.
   const showSampleWarning = source != null && !source.live;
   const state = safety ?? UNKNOWN_SAFETY;
@@ -65,6 +83,17 @@ export function SafetyRail({ lastScan, safety, source, onOpenSettings }: SafetyR
       {showSampleWarning && (
         <span className="saferail__sample" role="status" aria-label={source.label}>
           {source.label}
+        </span>
+      )}
+      {assist?.enabled && (
+        <span
+          className={`saferail__assist${
+            assist.contentLeavesMachine ? " saferail__assist--leaves" : ""
+          }`}
+          role="status"
+          aria-label={assist.label}
+        >
+          {assist.label}
         </span>
       )}
       <span className="saferail__spacer" />

@@ -1,0 +1,5 @@
+Xcode version: Xcode 26.6 (Build version 17F113)
+Swift version: Apple Swift version 6.3.3 (swift-driver 1.148.6)
+Target architecture: arm64
+Bundle identifier: com.example.dailyplanner.toolchain-probe
+Code-sign verification: codesign --verify --deep --strict passed (ad-hoc signature)

@@ -68,16 +68,16 @@ const DETAIL: Record<string, DraftDetail> = {
     isTriage: false,
     snippet: "",
     category: "career",
-    subject: "Re: Project interview — interview time",
+    subject: "Re: Example Corp Audit Co-op — interview time",
     body:
       "Hi Priya,\n\n" +
-      "Thank you for the invitation. Thursday at 14:30 conflicts with another commitment, " +
+      "Thank you for the invitation. Thursday at 14:30 collides with my ECON 250 midterm, " +
       "so I want to avoid proposing a time I can't hold.\n\n" +
       "Would Friday at 10:00 work instead? I'm clear from 09:00 to 18:00 that day and can " +
-      "come to the office or meet over video — whichever is easier for the team.\n\n" +
-      "Best,\nArief",
-    to: [{ name: "Alex Morgan", address: "alex@example.test" }],
-    cc: [{ name: "Recruiting Team", address: "recruiting@example.test" }],
+      "come to the downtown office or meet over video — whichever is easier for the team.\n\n" +
+      "Best,\nCasey",
+    to: [{ name: "Alex Morgan", address: "priya.nadella@example.test" }],
+    cc: [{ name: "Recruiting Team", address: "coop.recruiting@example.test" }],
     bcc: [],
     attachments: [],
     labels: ["Career", "Recruiting"],
@@ -94,9 +94,9 @@ const DETAIL: Record<string, DraftDetail> = {
     isTriage: false,
     snippet: "",
     category: "career",
-    subject: "Team coffee chat — hold + prep",
+    subject: "Example Consulting coffee chat — hold + prep",
     body:
-      "Creates a calendar hold for the team coffee chat, a 25-minute buffer before it, " +
+      "Creates a calendar hold for the Example Consulting coffee chat, a 25-minute transit buffer before it, " +
       "and a prep task the evening before. Nothing is added to your calendar until you approve.",
     to: [],
     cc: [],
@@ -113,15 +113,15 @@ const DETAIL: Record<string, DraftDetail> = {
     isTriage: false,
     snippet: "",
     category: "career",
-    subject: "Re: Team meeting — reschedule",
+    subject: "Re: Example Consulting associate — reschedule",
     body:
-      "Hi Jordan,\n\n" +
+      "Hi Marcus,\n\n" +
       "Thanks for the flexibility. Two windows that clear my 09:00–18:00 rule this week:\n" +
       "  • Wednesday 11:00–11:45\n" +
       "  • Thursday 16:15–17:00\n\n" +
       "Either works for me — let me know which suits you and I'll confirm.\n\n" +
-      "Best,\nArief",
-    to: [{ name: "Jordan Lee", address: "jordan@example.test" }],
+      "Best,\nCasey",
+    to: [{ name: "Jordan Lee", address: "marcus.lin@example.test" }],
     cc: [],
     bcc: [],
     attachments: [{ name: "availability.ics", size: "3 KB" }],

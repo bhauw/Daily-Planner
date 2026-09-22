@@ -48,6 +48,14 @@ export interface PlannerEvent {
   end: string | null;
   due: string | null;
   location: string | null;
+  /**
+   * The calendar this event is on.
+   *
+   * Required to move it: an event is patched on the calendar it lives on, and `primary` is a
+   * guess that touches the wrong event or none. The engine carried this in its domain all
+   * along and dropped it at the DTO, which is why "Move it" could only ever insert a copy.
+   */
+  calendarId: string;
 }
 
 export interface Preview {
@@ -114,6 +122,35 @@ export interface Safety {
 export interface Capability {
   canSend: boolean;
   canSchedule: boolean;
+  /**
+   * Whether an event the user already has can be MOVED, rather than a new one created.
+   *
+   * Asked separately from `canSchedule` because it depends on the engine having a move route,
+   * not only on what Google granted. An older engine answers `undefined` here, which is falsy,
+   * so the client falls back to the honest prefill-a-new-block behaviour rather than sending a
+   * move to a route that does not exist.
+   */
+  canReschedule: boolean;
+  /**
+   * Whether an assistant is available to propose replies. Independent of the Google grant —
+   * it depends on a CLI or a local model being on the machine, not on what the account allows.
+   */
+  canDraft: boolean;
+}
+
+/**
+ * The assistant, and where your content goes when you use it.
+ *
+ * Separate from `Safety` on purpose: `safety.mode` says what this app may do TO your account,
+ * this says where your content GOES. They are different promises and the rail states both.
+ */
+export interface Assist {
+  enabled: boolean;
+  /** "Claude (your subscription)", "Local model", … Empty when nothing is wired. */
+  provider: string;
+  /** True when drafting transmits the message off this Mac. */
+  contentLeavesMachine: boolean;
+  label: string;
 }
 
 /** Which data the engine is serving. `sample` means the Keychain read failed or no account is connected. */
@@ -132,6 +169,8 @@ export interface Settings {
   safety: Safety;
   source: Source;
   capability: Capability;
+  /** Absent on an engine built before drafting shipped; the client then shows no assistant. */
+  assist?: Assist;
 }
 
 // ---- Write requests ----
@@ -172,6 +211,55 @@ export interface CreateEventResponse {
   htmlLink: string | null;
 }
 
+/**
+ * Moving an event the user already has: an identity, a calendar, and two times.
+ *
+ * There is deliberately no title or description here. This request cannot rename or
+ * re-describe anything, because those fields do not exist on it to send.
+ */
+export interface MoveEventRequest {
+  eventId: string;
+  calendarId: string;
+  start: string;
+  end: string;
+}
+
+/** What the user wants a proposed reply to do. A closed set, mirroring the engine's. */
+export type ReplyIntent =
+  | "accept"
+  | "decline"
+  | "reschedule"
+  | "acknowledge"
+  | "askQuestion"
+  | "followUp";
+
+/**
+ * Asking for a proposed reply.
+ *
+ * Carries an ID, never the message text. The engine re-reads the message and builds the prompt
+ * from its own copy, so the rule that a private message is never transmitted holds against the
+ * provider's classification rather than against anything the client claims.
+ */
+export interface DraftReplyRequest {
+  messageId: string;
+  intent: ReplyIntent;
+  /**
+   * What the user typed instead of pressing an intent button.
+   *
+   * The only free text this route accepts, and it is an instruction ABOUT the message — never
+   * the message. The engine still re-reads the mail from its own copy, so this cannot be used
+   * to smuggle content in.
+   */
+  instruction?: string;
+}
+
+export interface DraftReplyResponse {
+  ok: boolean;
+  /** The proposed body. Opens in the composer for editing; nothing is sent from here. */
+  body: string;
+  provider: string;
+}
+
 export type DraftKind = "reply" | "bundle" | "event" | "task";
 
 export interface Draft {
@@ -188,10 +276,32 @@ export interface Draft {
    * conversation it answers instead of starting a new one beside it. Null on sample data.
    */
   threadId?: string | null;
+  /**
+   * Which triage band the engine put this in. Absent on synthetic content, which is not
+   * ranked — the client treats absent as "not triaged" and renders the row plainly rather
+   * than inventing a band for it.
+   */
+  band?: MailBand;
+  reason?: MailReason;
+  /** Why it is ranked where it is, in the user's words. Shown on the row. */
+  why?: string;
+  /** Still unread at the provider. */
+  unread?: boolean;
 }
+
+/** Urgent overrides category order; ordinary sits in its category's place. */
+export type MailBand = "urgent" | "ordinary";
+
+/** The four overrides, plus the ordinary case. */
+export type MailReason = "security" | "interview" | "deadline" | "obligation" | "category";
 
 export interface DraftsResponse {
   drafts: Draft[];
+  /**
+   * Promotions, social and spam the engine withheld. Shown as a count so hiding them stays
+   * honest — a silently shorter list is worse than a stated one.
+   */
+  hiddenCount?: number;
 }
 
 export interface TaskItem {
@@ -368,6 +478,12 @@ export const api = {
     post<SendMailRequest, SendMailResponse>("/api/mail/send", request),
   createEvent: (request: CreateEventRequest) =>
     post<CreateEventRequest, CreateEventResponse>("/api/calendar/events", request),
+  /** Moves an existing event. A POST here; the engine sends Google a PATCH. */
+  moveEvent: (request: MoveEventRequest) =>
+    post<MoveEventRequest, CreateEventResponse>("/api/calendar/events/move", request),
+  /** Asks for a proposed reply. Sends nothing and changes nothing in the account. */
+  draftReply: (request: DraftReplyRequest) =>
+    post<DraftReplyRequest, DraftReplyResponse>("/api/mail/draft", request),
 };
 
 export type Api = typeof api;

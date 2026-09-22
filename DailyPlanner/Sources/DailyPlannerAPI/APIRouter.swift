@@ -56,6 +56,10 @@ struct APIRouter: Sendable {
                 payload = try await service.sendMail(body)
             case .createEvent:
                 payload = try await service.createEvent(body)
+            case .moveEvent:
+                payload = try await service.moveEvent(body)
+            case .draftReply:
+                payload = try await service.draftReply(body)
             }
             APIDiagnostics.log.info("\(route.rawValue, privacy: .public) ok")
             return .json(200, "OK", payload)

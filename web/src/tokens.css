@@ -11,11 +11,28 @@
  * Accessibility note (measured, sRGB, WCAG 2.1):
  *   --text        (#FFFFFF) on --bg = 16.7:1
  *   --text-2      (#98989D) on --bg =  5.8:1  -> passes 4.5:1, used for all small text
- *   --text-3      (#6E6E73) on --bg =  3.3:1  -> FAILS 4.5:1 body; restricted below
+ *   --text-3      (#6E6E73) on --bg =  3.3:1, on --surface 3.0:1, on --surface-2 2.8:1
+ *                 -> FAILS 4.5:1 body at every depth; restricted below
  * Because the accessibility floor is enforced and outranks pixel-fidelity, the
  * semantic layer routes small informational text (eyebrows, counts, times, meta)
  * to --text-2. --text-3 is reserved for decorative rules, disabled states, and
  * large/non-text marks where the 3:1 threshold applies.
+ *
+ * That rule was written here but not kept: an audit found --text-3 carrying 10-11px
+ * text in 20 declarations, including the calendar hour labels (3.29:1), the block
+ * badges (2.75:1) and the safety line "Nothing is sent or saved without you pressing
+ * the button" (3.02:1). Those are now on --text-2. What is left on --text-3 is
+ * genuinely exempt: drag grips, disclosure carets, strikethrough rules, swatch
+ * outlines and :disabled fields.
+ *
+ * --accent (#0A84FF) is a BORDER and MARK colour. It is not a fill for white ink,
+ * and it is too dark to be small text on a raised surface:
+ *   #FFF on --accent            =  3.65:1 -> FAILS. Fill with --accent-fill instead.
+ *   --accent on --bg            =  4.57:1 -> passes, but only just
+ *   --accent on --surface       =  4.20:1 -> FAILS. Write text in --accent-text.
+ *   --accent on --bg as a mark  =  4.57:1 -> clears the 3:1 non-text threshold, so
+ *                                            rules, dots, 3px edges and dashed
+ *                                            outlines keep using --accent directly.
  */
 
 :root {
@@ -57,8 +74,31 @@
   --text-3: var(--p-grey-2); /* decorative / disabled / large only — never small body */
   --rail-ink: var(--p-rail-ink);
 
-  --accent: var(--p-school); /* the app's single interactive accent */
+  --accent: var(--p-school); /* the app's single interactive accent — TEXT/BORDER only */
   --accent-soft: rgba(10, 132, 255, 0.16);
+
+  /*
+   * The filled variant. --accent is the sampled macOS blue and stays exactly as it is
+   * wherever it is ink, a border or a 3px mark; but white text on it is 3.65:1, so a
+   * filled primary button needs a deeper blue. These three are the same hue, darkened
+   * until white clears 4.5:1, and they darken on press rather than lighten so the ramp
+   * never climbs back through the floor. Measured, sRGB, against #FFFFFF:
+   *   --accent-fill         #0D6AD0 = 5.26:1
+   *   --accent-fill-hover   #0A5FBB = 6.24:1
+   *   --accent-fill-active  #0A5CB4 = 6.56:1
+   */
+  --accent-fill: #0d6ad0;
+  --accent-fill-hover: #0a5fbb;
+  --accent-fill-active: #0a5cb4;
+  --accent-fill-ink: var(--p-white);
+
+  /*
+   * The accent as ink. Lifted until it clears 4.5:1 on the deepest surface the app
+   * paints (--surface-2), so "today", inline links and proposal eyebrows are legible
+   * wherever they land. Measured, sRGB: 5.83:1 on --bg, 5.36:1 on --surface,
+   * 4.88:1 on --surface-2.
+   */
+  --accent-text: #3f9bff;
 
   /* category tokens: the ONLY names a workspace may use for category colour */
   --cat-school: var(--p-school);
@@ -74,6 +114,47 @@
      silently. Give them real primitives when the palette grows. */
   --cat-commute: var(--p-grey-1);
   --cat-work: var(--p-grey-1);
+  /*
+   * TOPIC COLOURS — the palette a user-defined topic draws from.
+   *
+   * The five category colours above are fixed names with fixed meanings (school is blue,
+   * finance is lavender). Topics are made by the user, so they need a palette that is bigger
+   * than the categories and picked on different rules:
+   *
+   *   1. Every one clears 4.5:1 as TEXT on all three surfaces the app paints. A topic colour
+   *      is rendered as the tag's ink at 10px (see .tag), so this is a legibility floor, not a
+   *      preference. The worst case is --surface-2, the lightest; measured minimum is 5.10:1.
+   *   2. Every pair is at least dE76 24 apart. Contrast alone would happily hand back an amber
+   *      and an orange nobody can tell apart in a list — which is the entire job of a topic
+   *      colour. Measured minimum separation is 24.6.
+   *
+   * Both properties are recomputed from these values in topicColors.test.ts, so editing a hex
+   * here re-measures rather than going stale.
+   */
+  --topic-blue: #5ba0fb;
+  --topic-sky: #12abde;
+  --topic-teal: #14b39e;
+  --topic-green: #1db454;
+  --topic-lime: #6baf1d;
+  --topic-yellow: #b89f00;
+  --topic-orange: #f97706;
+  --topic-red: #f47671;
+  --topic-pink: #f471ae;
+  --topic-magenta: #ee68e5;
+  --topic-violet: #c084f5;
+  --topic-slate: #939fae;
+
+  /*
+   * Two category colours as ink, for the same reason --accent-text exists.
+   *
+   * .tag paints the category colour as 10px text. Measured on that surface, --cat-school
+   * (#0A84FF) is 3.83:1 on --surface-2 and --cat-personal (#FF00FF) is 4.45:1 — both under the
+   * floor, both shipped that way. The mark and border keep the original hues; only the ink
+   * moves, onto the nearest topic colour so the two systems agree.
+   */
+  --cat-school-ink: var(--topic-blue);
+  --cat-personal-ink: var(--topic-magenta);
+
   --warn: var(--p-warn);
 
   --focus-ring: var(--p-school);

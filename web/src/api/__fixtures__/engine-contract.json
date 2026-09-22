@@ -32,6 +32,8 @@
     ],
     "writeRoute" : [
       "\/api\/calendar\/events",
+      "\/api\/calendar\/events\/move",
+      "\/api\/mail\/draft",
       "\/api\/mail\/send"
     ]
   },
@@ -71,7 +73,8 @@
           "summary" : "Confirms the Tuesday 18:00 room booking for roughly 20 attendees.",
           "title" : "Finance club — room booking confirmation"
         }
-      ]
+      ],
+      "hiddenCount" : 0
     },
     "\/api\/health" : {
       "mode" : "read-only",
@@ -81,6 +84,7 @@
       "day" : "2026-09-09",
       "queue" : [
         {
+          "calendarId" : "synthetic-school-demo",
           "category" : "school",
           "due" : "2026-09-09T15:00:00-07:00",
           "end" : "2026-09-09T14:00:00-07:00",
@@ -91,6 +95,7 @@
           "title" : "Synthetic school deadline"
         },
         {
+          "calendarId" : "synthetic-school-demo",
           "category" : "school",
           "due" : "2026-09-09T16:00:00-07:00",
           "end" : "2026-09-09T10:00:00-07:00",
@@ -103,6 +108,7 @@
       ],
       "schedule" : [
         {
+          "calendarId" : "synthetic-school-demo",
           "category" : "school",
           "due" : "2026-09-09T16:00:00-07:00",
           "end" : "2026-09-09T10:00:00-07:00",
@@ -113,6 +119,7 @@
           "title" : "Synthetic school task"
         },
         {
+          "calendarId" : "synthetic-school-demo",
           "category" : "school",
           "due" : "2026-09-09T15:00:00-07:00",
           "end" : "2026-09-09T14:00:00-07:00",
@@ -125,7 +132,15 @@
       ]
     },
     "\/api\/settings" : {
+      "assist" : {
+        "contentLeavesMachine" : false,
+        "enabled" : false,
+        "label" : "",
+        "provider" : ""
+      },
       "capability" : {
+        "canDraft" : false,
+        "canReschedule" : false,
         "canSchedule" : false,
         "canSend" : false
       },
@@ -227,6 +242,7 @@
       "days" : 7,
       "events" : [
         {
+          "calendarId" : "synthetic-school-demo",
           "category" : "school",
           "due" : "2026-09-09T16:00:00-07:00",
           "end" : "2026-09-09T10:00:00-07:00",
@@ -237,6 +253,7 @@
           "title" : "Synthetic school task"
         },
         {
+          "calendarId" : "synthetic-school-demo",
           "category" : "school",
           "due" : "2026-09-09T15:00:00-07:00",
           "end" : "2026-09-09T14:00:00-07:00",
@@ -252,7 +269,15 @@
   },
   "variants" : {
     "settingsWritable" : {
+      "assist" : {
+        "contentLeavesMachine" : false,
+        "enabled" : false,
+        "label" : "",
+        "provider" : ""
+      },
       "capability" : {
+        "canDraft" : false,
+        "canReschedule" : true,
         "canSchedule" : true,
         "canSend" : true
       },

@@ -32,7 +32,7 @@ export function EventRow({ event, showDuration = false, note }: EventRowProps) {
           {event.title}
         </div>
         <div className="item__meta" aria-hidden="true">
-          <Tag label={p.tag} colorVar={p.colorVar} />
+          <Tag label={p.tag} colorVar={p.inkVar} />
           {note && <span className="item__note">{note}</span>}
           {time && <span className="num item__time">{time}</span>}
         </div>

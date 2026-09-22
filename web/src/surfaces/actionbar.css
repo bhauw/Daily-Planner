@@ -23,7 +23,7 @@
 .actionbar__key {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  color: var(--text-3);
+  color: var(--text-2);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-2);
@@ -38,5 +38,5 @@
 .actionbar__note {
   flex-basis: 100%;
   font-size: var(--text-xs);
-  color: var(--text-3);
+  color: var(--text-2);
 }

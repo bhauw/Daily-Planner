@@ -22,7 +22,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api as defaultApi, type Capability } from "../api/client";
+import { api as defaultApi, type Assist, type Capability } from "../api/client";
 import { Composer } from "./Composer";
 import { Scheduler } from "./Scheduler";
 import type { ComposePrefill, SchedulePrefill } from "./types";
@@ -48,7 +48,9 @@ type Desk =
 interface WriteDeskProviderProps {
   capability: Capability;
   /** Injected for tests; the real engine client by default. */
-  client?: Pick<typeof defaultApi, "sendMail" | "createEvent">;
+  client?: Pick<typeof defaultApi, "sendMail" | "createEvent" | "moveEvent" | "draftReply">;
+  /** The assistant, for the composer's offer and for the line that says where content goes. */
+  assist?: Assist;
   /** Called after a successful write, so the surfaces can pick the change up. */
   onWrote?: () => void;
   children: ReactNode;
@@ -56,6 +58,7 @@ interface WriteDeskProviderProps {
 
 export function WriteDeskProvider({
   capability,
+  assist,
   client = defaultApi,
   onWrote,
   children,
@@ -202,7 +205,13 @@ export function WriteDeskProvider({
             className="compose__panel"
             role="dialog"
             aria-modal="true"
-            aria-label={open.kind === "compose" ? "New message" : "New event"}
+            aria-label={
+              open.kind === "compose"
+                ? "New message"
+                : open.prefill.move
+                ? "Move event"
+                : "New event"
+            }
             tabIndex={-1}
             ref={panelRef}
           >
@@ -210,6 +219,15 @@ export function WriteDeskProvider({
               <Composer
                 prefill={open.prefill}
                 send={client.sendMail}
+                // Passed only when the engine says an assistant exists. The composer hides the
+                // offer without it, rather than showing a button that cannot work.
+                {...(assist?.enabled
+                  ? {
+                      draft: client.draftReply,
+                      draftProvider: assist.provider,
+                      draftLeavesMachine: assist.contentLeavesMachine,
+                    }
+                  : {})}
                 onClose={close}
                 onBusyChange={setBusy}
                 onWrote={onWrote}
@@ -218,6 +236,7 @@ export function WriteDeskProvider({
               <Scheduler
                 prefill={open.prefill}
                 create={client.createEvent}
+                move={client.moveEvent}
                 onClose={close}
                 onBusyChange={setBusy}
                 onWrote={onWrote}

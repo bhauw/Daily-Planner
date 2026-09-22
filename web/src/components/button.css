@@ -29,17 +29,22 @@
   cursor: default;
 }
 
+/*
+ * Filled primary. Uses --accent-fill, not --accent: white on --accent is 3.65:1.
+ * Hover and active go darker, so every state stays above 4.5:1 (see tokens.css).
+ */
 .btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-fill-ink);
 }
 .btn--primary:hover {
-  background: #2b93ff;
-  border-color: #2b93ff;
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover);
 }
 .btn--primary:active {
-  background: #0a76e6;
+  background: var(--accent-fill-active);
+  border-color: var(--accent-fill-active);
 }
 
 .btn--ghost {

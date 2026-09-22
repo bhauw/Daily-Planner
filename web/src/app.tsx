@@ -33,6 +33,7 @@ import { Digest } from "./surfaces/Digest";
 import { DraftCard } from "./components/DraftCard";
 import {
   api,
+  type Assist,
   type Capability,
   type Draft,
   type Preview,
@@ -102,6 +103,10 @@ export function App() {
 interface ShellData {
   preview: Preview;
   drafts: Draft[];
+  /** Promotions and spam the engine withheld from the triage list. */
+  hiddenCount: number;
+  /** The assistant, and whether using it sends content off this Mac. Null when none. */
+  assist: Assist | null;
   tasks: TasksResponse;
   /**
    * Which data the engine is serving. Null when /api/settings could not be read — we then show
@@ -127,7 +132,7 @@ interface ShellData {
   capability: Capability;
 }
 
-const NO_CAPABILITY: Capability = { canSend: false, canSchedule: false };
+const NO_CAPABILITY: Capability = { canSend: false, canSchedule: false, canReschedule: false, canDraft: false };
 
 function Shell({ pathname, navigate }: { pathname: string; navigate: (p: string) => void }) {
   const route = routeForPath(pathname);
@@ -144,6 +149,8 @@ function Shell({ pathname, navigate }: { pathname: string; navigate: (p: string)
     return {
       preview,
       drafts: draftsRes.drafts,
+      hiddenCount: draftsRes.hiddenCount ?? 0,
+      assist: settings?.assist ?? null,
       tasks,
       source: settings?.source ?? null,
       week,
@@ -165,7 +172,11 @@ function Shell({ pathname, navigate }: { pathname: string; navigate: (p: string)
     // `onWrote` reloads: an event the user just created belongs on the day they are looking at,
     // and a surface that still shows the day as it was before the write is telling them their
     // action did not take.
-    <WriteDeskProvider capability={data?.capability ?? NO_CAPABILITY} onWrote={reload}>
+    <WriteDeskProvider
+      capability={data?.capability ?? NO_CAPABILITY}
+      assist={data?.assist ?? undefined}
+      onWrote={reload}
+    >
       <div className="app">
         <div className="app__body">
           <SidebarRail active={route} badges={badges} onNavigate={navigate} />
@@ -174,6 +185,7 @@ function Shell({ pathname, navigate }: { pathname: string; navigate: (p: string)
               lastScan="12:00"
               safety={data?.safety ?? null}
               source={data?.source ?? null}
+              assist={data?.assist ?? null}
               onOpenSettings={() => navigate("/settings")}
             />
             <main className="app__surface" aria-label={route}>
@@ -231,6 +243,7 @@ function SurfaceContent({
           preview={data.preview}
           tasks={data.tasks}
           drafts={data.drafts}
+          hiddenCount={data.hiddenCount}
           week={data.week}
           capability={data.capability}
         />

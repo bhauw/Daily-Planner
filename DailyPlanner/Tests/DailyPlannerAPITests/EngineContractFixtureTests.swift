@@ -44,6 +44,7 @@ final class EngineContractFixtureTests: XCTestCase {
             clock: FixedTestClock(now: referenceDate),
             mailSender: StubSender(),
             eventScheduler: StubScheduler(),
+            eventRescheduler: StubMover(),
             capability: .readWrite
         )
 
@@ -101,6 +102,12 @@ final class EngineContractFixtureTests: XCTestCase {
     private struct StubScheduler: PlannerEventScheduling, Sendable {
         func create(_ draft: PlannerEventDraft) async throws -> PlannerScheduledEvent {
             PlannerScheduledEvent(id: "fixture", start: draft.start, end: draft.end, link: nil)
+        }
+    }
+
+    private struct StubMover: PlannerEventRescheduling, Sendable {
+        func move(_ move: PlannerEventMove) async throws -> PlannerScheduledEvent {
+            PlannerScheduledEvent(id: move.eventID, start: move.start, end: move.end, link: nil)
         }
     }
 

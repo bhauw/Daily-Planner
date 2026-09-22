@@ -22,8 +22,30 @@ public enum GoogleRequestBuilder {
         accessToken: GoogleAccessToken,
         body: Data
     ) throws -> URLRequest {
+        try writeJSON(method: "POST", url: url, accessToken: accessToken, body: body)
+    }
+
+    /// A JSON PATCH — a PARTIAL update, which is the whole reason this is PATCH and not PUT.
+    /// A body naming only `start` and `end` changes only those two fields; the title, the
+    /// description, the attendees and the recurrence on the user's real event are untouched
+    /// because they are never mentioned. A PUT would replace the event with whatever this app
+    /// happened to know about it, which for a planner is always less than Google holds.
+    public static func patchJSON(
+        url: URL,
+        accessToken: GoogleAccessToken,
+        body: Data
+    ) throws -> URLRequest {
+        try writeJSON(method: "PATCH", url: url, accessToken: accessToken, body: body)
+    }
+
+    private static func writeJSON(
+        method: String,
+        url: URL,
+        accessToken: GoogleAccessToken,
+        body: Data
+    ) throws -> URLRequest {
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         let authorization = accessToken.withUnsafeRawValue { "Bearer \($0)" }
         request.setValue(authorization, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

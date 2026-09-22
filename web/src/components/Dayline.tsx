@@ -139,7 +139,15 @@ export function Dayline({ events, windowStart = 9 * 60, windowEnd = 21 * 60 }: D
       <div className="dayline" role="list" aria-label="Today's schedule">
         {rows.map((row, i) =>
           row.kind === "block" ? (
-            <div className="slot" role="listitem" key={row.event.id} aria-label={`${row.time}, ${row.event.title}`}>
+            <div
+              className="slot"
+              role="listitem"
+              key={row.event.id}
+              /* Surfaces which block a row draws, so a drop target can measure the
+                 boundary between two rows without re-deriving the layout. */
+              data-event-id={row.event.id}
+              aria-label={`${row.time}, ${row.event.title}`}
+            >
               <div className="num slot__hr">{row.time}</div>
               <div className="slot__lane">
                 <div className="blk" style={{ borderColor: row.colorVar }}>

@@ -10,18 +10,59 @@
  * The review screen shows the recipients as a list rather than a joined string,
  * because "who is this actually going to" is the question the step exists to
  * answer, and a run-on line of addresses is the shape that hides an extra one.
+ *
+ * An assistant can propose the body, and that happens HERE rather than before
+ * the composer opens. Three reasons: there is no dead time staring at a row
+ * that has not become a dialog yet, a failure to draft does not stop you
+ * writing the reply yourself, and the text lands in the field you were going
+ * to edit it in anyway. Drafting replaces nothing and sends nothing — it fills
+ * a textarea, and the Review step is still the only way anything leaves.
  */
 
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../components/Button";
-import { ApiError, type SendMailRequest, type SendMailResponse } from "../api/client";
+import {
+  ApiError,
+  type DraftReplyRequest,
+  type DraftReplyResponse,
+  type ReplyIntent,
+  type SendMailRequest,
+  type SendMailResponse,
+} from "../api/client";
 import type { ComposePrefill } from "./types";
+
+/**
+ * What you can ask for, and what the button says.
+ *
+ * Buttons for the six ordinary cases, and a box for when none of them is what you meant.
+ *
+ * The buttons were a closed set rather than a free-text instruction box. The intent becomes part of what is
+ * sent off the machine, and a text field here would be one more thing going straight into a
+ * prompt — with no benefit, because these are the six things a reply to an inbox actually does.
+ */
+/** Matches PlannerReplyRequest.maxInstructionBytes, so the engine never has to refuse one. */
+const MAX_INSTRUCTION = 1000;
+
+const INTENTS: { intent: ReplyIntent; label: string }[] = [
+  { intent: "accept", label: "Accept" },
+  { intent: "decline", label: "Decline" },
+  { intent: "reschedule", label: "Ask to move it" },
+  { intent: "acknowledge", label: "Acknowledge" },
+  { intent: "askQuestion", label: "Ask a question" },
+  { intent: "followUp", label: "Follow up" },
+];
 
 type Phase = "write" | "review" | "sending" | "sent";
 
 interface ComposerProps {
   prefill: ComposePrefill;
   send: (request: SendMailRequest) => Promise<SendMailResponse>;
+  /** Asks an assistant for a body. Absent when none is configured. */
+  draft?: (request: DraftReplyRequest) => Promise<DraftReplyResponse>;
+  /** Named on the button, so it always says WHICH assistant is about to see the message. */
+  draftProvider?: string;
+  /** True when drafting sends the message off this Mac. The warning depends on it. */
+  draftLeavesMachine?: boolean;
   onClose: () => void;
   /** True while a send is in flight, so the host can refuse to close over it. */
   onBusyChange?: (busy: boolean) => void;
@@ -37,7 +78,16 @@ export function parseRecipients(value: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-export function Composer({ prefill, send, onClose, onBusyChange, onWrote }: ComposerProps) {
+export function Composer({
+  prefill,
+  send,
+  draft,
+  draftProvider,
+  draftLeavesMachine = false,
+  onClose,
+  onBusyChange,
+  onWrote,
+}: ComposerProps) {
   const [to, setTo] = useState(prefill.to.join(", "));
   const [cc, setCc] = useState((prefill.cc ?? []).join(", "));
   const [bcc, setBcc] = useState("");
@@ -47,11 +97,43 @@ export function Composer({ prefill, send, onClose, onBusyChange, onWrote }: Comp
   const [phase, setPhase] = useState<Phase>("write");
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  // "custom" is not an intent — it marks the typed-instruction button as the one that is busy,
+  // so only that control shows "Writing…" rather than all seven at once.
+  const [drafting, setDrafting] = useState<ReplyIntent | "custom" | null>(null);
+  const [draftNote, setDraftNote] = useState<string | null>(null);
+
+  // Offered only when there is an assistant AND a message to draft against. Generating a reply
+  // to nothing is not a thing this can do.
+  const canDraft = draft != null && prefill.draftFrom != null;
+  // Kept even after a draft lands, so "make it shorter" is one edit away from "make it warmer"
+  // rather than something to retype.
+  const [instruction, setInstruction] = useState("");
 
   const recipients = useMemo(() => parseRecipients(to), [to]);
   const ccList = useMemo(() => parseRecipients(cc), [cc]);
   const bccList = useMemo(() => parseRecipients(bcc), [bcc]);
   const ready = recipients.length > 0 && subject.trim().length > 0 && body.trim().length > 0;
+
+  async function proposeBody(intent: ReplyIntent, instruction?: string) {
+    if (!draft || !prefill.draftFrom) return;
+    setDrafting(instruction ? "custom" : intent);
+    setDraftNote(null);
+    setError(null);
+    try {
+      const proposal = await draft({ messageId: prefill.draftFrom, intent, instruction });
+      setBody(proposal.body);
+      setDraftNote(`Drafted by ${proposal.provider}. Read it before you send it.`);
+      bodyRef.current?.focus();
+    } catch (failure) {
+      // A drafting failure must not be a dead end: the reply can still be typed. So this is a
+      // note beside the field, not the form's error state.
+      setDraftNote(
+        failure instanceof ApiError ? failure.message : "The assistant could not be reached.",
+      );
+    } finally {
+      setDrafting(null);
+    }
+  }
 
   function review(event?: FormEvent) {
     event?.preventDefault();
@@ -190,6 +272,79 @@ export function Composer({ prefill, send, onClose, onBusyChange, onWrote }: Comp
           autoComplete="off"
         />
       </label>
+
+      {canDraft && (
+        <div className="compose__assist">
+          <span className="compose__label">
+            Draft it for me
+            {draftProvider && <span className="compose__optional">{draftProvider}</span>}
+          </span>
+          <div className="compose__quick" role="group" aria-label="Draft a reply">
+            {INTENTS.map(({ intent, label }) => (
+              <button
+                key={intent}
+                type="button"
+                className="compose__chip"
+                disabled={drafting != null}
+                onClick={() => void proposeBody(intent)}
+              >
+                {drafting === intent ? "Writing…" : label}
+              </button>
+            ))}
+          </div>
+          {/*
+            Said before it happens, not after. Pressing one of those buttons is the moment this
+            message goes to someone else's computer, and the person pressing it should know
+            that from the screen rather than from a changelog.
+          */}
+          <p className="compose__assistnote">
+            {draftLeavesMachine
+              ? "This sends the subject, the sender and the snippet to the assistant. Nothing is emailed until you press Review, then Send."
+              : "This runs on your Mac. Nothing is emailed until you press Review, then Send."}
+          </p>
+          {/*
+            The escape hatch. Six buttons cover the ordinary cases; everything else — "say I can
+            do Tuesday but not Thursday", "keep it formal, they are a partner" — used to mean
+            picking the nearest wrong one and rewriting the result by hand.
+          */}
+          <div className="compose__custom">
+            <label className="sr-only" htmlFor="draft-instruction">
+              Tell the assistant what to write
+            </label>
+            <input
+              id="draft-instruction"
+              className="compose__custominput"
+              type="text"
+              placeholder="Or tell it what to say…"
+              value={instruction}
+              maxLength={MAX_INSTRUCTION}
+              disabled={drafting != null}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter drafts; it must not reach the form, where it would mean "review".
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (instruction.trim()) void proposeBody("accept", instruction.trim());
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              disabled={drafting != null || instruction.trim().length === 0}
+              onClick={() => void proposeBody("accept", instruction.trim())}
+            >
+              {drafting === "custom" ? "Writing…" : "Write it"}
+            </Button>
+          </div>
+          {draftNote && (
+            <p className="compose__assistnote compose__assistnote--said" role="status">
+              {draftNote}
+            </p>
+          )}
+        </div>
+      )}
 
       <label className="compose__field compose__field--grow">
         <span className="compose__label">Message</span>

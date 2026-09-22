@@ -30,5 +30,9 @@ describe("the shell mounts", () => {
     });
 
     expect(host.textContent).toBeTruthy();
-  });
+    // 20s, not the default 5s. This mounts the entire shell in jsdom, which is the slowest
+    // thing in the suite by an order of magnitude; it runs in ~2.6s alone and was tipping past
+    // 5s only when the rest of the suite is competing for the same cores. Raising it here
+    // rather than globally keeps every other test held to the strict default.
+  }, 20_000);
 });

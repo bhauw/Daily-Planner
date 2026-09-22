@@ -7,6 +7,12 @@
  * workbench owns the per-draft action state (the state machine in machine.ts);
  * the panes are presentational. This round is READ-ONLY — approve/reject move
  * local state only and no write endpoint is called (the client has none).
+ *
+ * ONLY THE THREAD LIST SCROLLS. The editor and context panes are fixed-height
+ * flex columns: when all three scrolled, reviewing a draft slid the status
+ * stepper, the recipients and the Approve/Reject buttons off the top and bottom
+ * of the screen — the three things the review step exists to keep in front of
+ * you. The body textarea is the one elastic element and scrolls its own text.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +23,7 @@ import {
   useAsync,
   api as defaultApi,
 } from "../contract";
-import type { Api, Draft } from "../contract";
+import type { Api, Draft, ReplyIntent } from "../contract";
 import { ThreadList, type ThreadRow } from "./ThreadList";
 import { DraftEditor } from "./DraftEditor";
 import { ContextUsed } from "./ContextUsed";
@@ -78,10 +84,30 @@ export function DraftWorkbench({ api = defaultApi, detached }: { api?: Api; deta
     );
   }
 
-  return <Loaded drafts={data} detached={detached} />;
+  return <Loaded drafts={data} detached={detached} api={api} />;
 }
 
-function Loaded({ drafts, detached }: { drafts: Draft[]; detached: boolean }) {
+function Loaded({
+  drafts,
+  detached,
+  api,
+}: {
+  drafts: Draft[];
+  detached: boolean;
+  api: Api;
+}) {
+  /*
+   * Ask the engine for a proposal.
+   *
+   * The engine re-reads the message from its own copy — the client sends an id and an intent,
+   * never content — so the private-message rule holds against Gmail's classification rather
+   * than against anything this component claims.
+   */
+  async function onDraft(messageId: string, intent: ReplyIntent, instruction?: string) {
+    const proposal = await api.draftReply({ messageId, intent, instruction });
+    return proposal.body;
+  }
+
   const items = useMemo<WorkItem[]>(
     () => drafts.map((draft) => ({ draft, detail: detailFor(draft) })),
     [drafts],
@@ -135,7 +161,7 @@ function Loaded({ drafts, detached }: { drafts: Draft[]; detached: boolean }) {
         <ThreadList rows={rows} selectedId={selected.draft.id} onSelect={setSelectedId} />
       </section>
 
-      <section className="mail__pane mail__editor-pane scroll-y" aria-label="Draft editor">
+      <section className="mail__pane mail__editor-pane" aria-label="Draft editor">
         <ColumnHeader
           eyebrow="Editor"
           title={selected.draft.title}
@@ -146,6 +172,7 @@ function Loaded({ drafts, detached }: { drafts: Draft[]; detached: boolean }) {
           draft={selected.draft}
           detail={selected.detail}
           state={selectedState}
+          onDraft={onDraft}
           onEditSubject={(v) => update(selected.draft.id, (s) => editSubject(s, v))}
           onEditBody={(v) => update(selected.draft.id, (s) => editBody(s, v))}
           onPreflight={() => update(selected.draft.id, preflight)}
@@ -154,7 +181,7 @@ function Loaded({ drafts, detached }: { drafts: Draft[]; detached: boolean }) {
         />
       </section>
 
-      <aside className="mail__pane mail__ctx-pane scroll-y" aria-label="Context used">
+      <aside className="mail__pane mail__ctx-pane" aria-label="Context used">
         <ColumnHeader eyebrow="Context" title="What was used" />
         <div className="mail__hairline" />
         <ContextUsed context={selected.detail.context} />

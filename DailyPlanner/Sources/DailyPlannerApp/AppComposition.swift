@@ -275,9 +275,24 @@ public final class EngineHost: NSObject, NSApplicationDelegate {
         let mailSender: GoogleMailSender? = capability?.canSendMail == true
             ? GoogleMailSender(client: GmailSendClient(transport: transport), tokens: tokens)
             : nil
-        let eventScheduler: GoogleCalendarScheduler? = capability?.canCreateEvents == true
-            ? GoogleCalendarScheduler(client: GoogleCalendarWriteClient(transport: transport), tokens: tokens)
+        // One client, two ports. The grant that lets this app put an event on a calendar is the
+        // same one that lets it move an event already there, so they are built together or not
+        // at all — but they stay separate values, because the service asks them separately and
+        // a composition that wanted create-without-edit could say so here.
+        let writeClient = capability?.canCreateEvents == true
+            ? GoogleCalendarWriteClient(transport: transport)
             : nil
+        let eventScheduler = writeClient.map { GoogleCalendarScheduler(client: $0, tokens: tokens) }
+        let eventRescheduler = writeClient.map { GoogleCalendarRescheduler(client: $0, tokens: tokens) }
+
+        // The assistant, if one is on this machine.
+        //
+        // Not gated on the Google grant: drafting a reply needs a model, not a permission from
+        // Google. Nil when the CLI is not installed, which is what makes "this app cannot
+        // generate" a structural fact rather than a setting — and the rail reads the provider
+        // for whether content leaves, so a local-model adapter dropped in here would change
+        // that line without touching anything else.
+        let replyWriter = ClaudeCodeReplyWriter.locate().map { ClaudeCodeReplyWriter(executable: $0) }
 
         return PlannerAPIService(
             source: source,
@@ -287,6 +302,8 @@ public final class EngineHost: NSObject, NSApplicationDelegate {
             mailReader: mail,
             mailSender: mailSender,
             eventScheduler: eventScheduler,
+            eventRescheduler: eventRescheduler,
+            replyWriter: replyWriter,
             capability: capability
         )
     }

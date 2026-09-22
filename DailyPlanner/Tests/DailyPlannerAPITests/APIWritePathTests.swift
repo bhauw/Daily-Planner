@@ -54,6 +54,19 @@ final class APIWritePathTests: XCTestCase {
         }
     }
 
+    private final class SpyMover: PlannerEventRescheduling, @unchecked Sendable {
+        var moved: [PlannerEventMove] = []
+        var failure: (any Error)?
+
+        func move(_ move: PlannerEventMove) async throws -> PlannerScheduledEvent {
+            if let failure { throw failure }
+            moved.append(move)
+            return PlannerScheduledEvent(
+                id: move.eventID, start: move.start, end: move.end, link: "https://example.test/e"
+            )
+        }
+    }
+
     private struct StubFailure: Error, PlannerWriteFailure {
         let writeOutcome: PlannerWriteOutcome
     }
@@ -63,6 +76,7 @@ final class APIWritePathTests: XCTestCase {
     private func service(
         sender: (any PlannerMailSending)? = nil,
         scheduler: (any PlannerEventScheduling)? = nil,
+        mover: (any PlannerEventRescheduling)? = nil,
         capability: GoogleGrantedCapability? = nil
     ) -> PlannerAPIService {
         PlannerAPIService(
@@ -71,9 +85,15 @@ final class APIWritePathTests: XCTestCase {
             clock: FixedTestClock(now: referenceDate),
             mailSender: sender,
             eventScheduler: scheduler,
+            eventRescheduler: mover,
             capability: capability
         )
     }
+
+    private let validMove = #"""
+    {"eventId":"evt-1","calendarId":"primary",
+     "start":"2026-09-16T09:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}
+    """#
 
     private func router(_ service: PlannerAPIService) -> APIRouter {
         APIRouter(
@@ -338,6 +358,77 @@ final class APIWritePathTests: XCTestCase {
             XCTAssertEqual(response.status, 400, "must refuse: \(json)")
             XCTAssertTrue(scheduler.created.isEmpty)
         }
+    }
+
+    // MARK: - Moving
+
+    func testMoveReachesTheReschedulerWithOnlyAnIdentityAndAnInterval() async throws {
+        // Break caught: "Move it" inserts a second event instead of moving the one the user
+        // already has. That happened on a real calendar, and it is what this route exists to
+        // stop — so the assertion is that the MOVER ran and the SCHEDULER did not.
+        let mover = SpyMover()
+        let scheduler = SpyScheduler()
+        let response = await router(service(scheduler: scheduler, mover: mover, capability: .readWrite))
+            .respond(to: post("/api/calendar/events/move", json: #"""
+            {"eventId":"evt-9","calendarId":"calendar@example.test",
+             "start":"2026-09-16T13:00:00-07:00","end":"2026-09-16T14:00:00-07:00"}
+            """#))
+
+        XCTAssertEqual(response.status, 200)
+        XCTAssertTrue(scheduler.created.isEmpty, "a move must never create")
+        let move = try XCTUnwrap(mover.moved.first)
+        XCTAssertEqual(move.eventID, "evt-9")
+        XCTAssertEqual(move.calendarID.rawValue, "calendar@example.test")
+        XCTAssertEqual(move.end.timeIntervalSince(move.start), 60 * 60)
+
+        let payload = object(response.body)
+        XCTAssertEqual(payload["id"] as? String, "evt-9")
+        XCTAssertEqual(payload["start"] as? String, "2026-09-16T13:00:00-07:00")
+    }
+
+    func testMoveRefusesWhatWouldNotBeAnEvent() async {
+        // Same interval rules as a create: an end at or before its start, a mistyped year, an
+        // unparseable stamp. Plus the two a move has of its own — no event, and no calendar.
+        let cases = [
+            #"{"eventId":"e","calendarId":"primary","start":"2026-09-16T10:00:00-07:00","end":"2026-09-16T09:00:00-07:00"}"#,
+            #"{"eventId":"e","calendarId":"primary","start":"2026-09-16T10:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}"#,
+            #"{"eventId":"e","calendarId":"primary","start":"2026-09-16T10:00:00-07:00","end":"2062-09-16T10:00:00-07:00"}"#,
+            #"{"eventId":"e","calendarId":"primary","start":"not-a-date","end":"2026-09-16T10:00:00-07:00"}"#,
+            #"{"eventId":"","calendarId":"primary","start":"2026-09-16T09:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}"#,
+            #"{"eventId":"e","calendarId":"","start":"2026-09-16T09:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}"#,
+            // An id carrying a slash would reshape the PATCH path into a different endpoint.
+            #"{"eventId":"e/../../x","calendarId":"primary","start":"2026-09-16T09:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}"#,
+            #"{"eventId":"e","calendarId":"a/b","start":"2026-09-16T09:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}"#,
+            // The calendar is required: there is no `primary` fallback on a move.
+            #"{"eventId":"e","start":"2026-09-16T09:00:00-07:00","end":"2026-09-16T10:00:00-07:00"}"#,
+        ]
+        for json in cases {
+            let mover = SpyMover()
+            let response = await router(service(mover: mover, capability: .readWrite))
+                .respond(to: post("/api/calendar/events/move", json: json))
+            XCTAssertEqual(response.status, 400, "must refuse: \(json)")
+            XCTAssertTrue(mover.moved.isEmpty, "nothing may be moved: \(json)")
+        }
+    }
+
+    func testAGrantThatCannotWriteCannotMoveEither() async {
+        // Break caught: the new route is reachable on a read-only grant because it was added to
+        // the router without a rescheduler to guard it.
+        let response = await router(service(capability: .readOnly))
+            .respond(to: post("/api/calendar/events/move", json: validMove))
+        XCTAssertEqual(response.status, 403)
+        XCTAssertEqual(errorCode(response), "write_not_permitted")
+    }
+
+    func testMoveIsReportedSeparatelyFromSchedulingInTheCapability() {
+        // Break caught: the UI offers a real move against an engine that has no move route, so
+        // "Move it" quietly falls back to inserting a duplicate again.
+        let both = object(service(scheduler: SpyScheduler(), mover: SpyMover(), capability: .readWrite).settingsPayload())
+        XCTAssertEqual((both["capability"] as? [String: Any])?["canReschedule"] as? Bool, true)
+
+        let createOnly = object(service(scheduler: SpyScheduler(), capability: .readWrite).settingsPayload())
+        XCTAssertEqual((createOnly["capability"] as? [String: Any])?["canSchedule"] as? Bool, true)
+        XCTAssertEqual((createOnly["capability"] as? [String: Any])?["canReschedule"] as? Bool, false)
     }
 
     func testUndecodableBodyIsOneFiniteRefusal() async {

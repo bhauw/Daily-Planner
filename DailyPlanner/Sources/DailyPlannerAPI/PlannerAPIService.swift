@@ -20,6 +20,12 @@ public struct PlannerAPIService: Sendable {
     private let mailSender: (any PlannerMailSending)?
     /// Creates calendar events, on the same terms.
     private let eventScheduler: (any PlannerEventScheduling)?
+    /// Moves events that already exist, on the same terms. Separate from `eventScheduler`
+    /// because creating and editing are separate permissions to reason about.
+    private let eventRescheduler: (any PlannerEventRescheduling)?
+    /// Proposes replies. Nil when no assistant is wired, which is what makes "this app cannot
+    /// generate" structural rather than a setting. Independent of the Google grant.
+    private let replyWriter: (any PlannerReplyDrafting)?
     /// What the connected grant permits. Nil when no account is connected.
     private let capability: GoogleGrantedCapability?
     private let schedulePolicy: LocalSchedulePolicy
@@ -60,6 +66,9 @@ public struct PlannerAPIService: Sendable {
         // Sample data never writes anywhere. There is nothing to write to.
         self.mailSender = nil
         self.eventScheduler = nil
+        self.eventRescheduler = nil
+        // Sample data is not anybody's mail, so there is nothing to draft against.
+        self.replyWriter = nil
         self.capability = nil
         self.schedulePolicy = LocalSchedulePolicy.v1
         self.clock = FixedClock(referenceDate)
@@ -84,6 +93,8 @@ public struct PlannerAPIService: Sendable {
         mailReader: (any PlannerMailReading)? = nil,
         mailSender: (any PlannerMailSending)? = nil,
         eventScheduler: (any PlannerEventScheduling)? = nil,
+        eventRescheduler: (any PlannerEventRescheduling)? = nil,
+        replyWriter: (any PlannerReplyDrafting)? = nil,
         capability: GoogleGrantedCapability? = nil
     ) {
         self.planning = PlanningPreviewWorkflow(
@@ -98,6 +109,8 @@ public struct PlannerAPIService: Sendable {
         self.mailReader = mailReader
         self.mailSender = mailSender
         self.eventScheduler = eventScheduler
+        self.eventRescheduler = eventRescheduler
+        self.replyWriter = replyWriter
         self.capability = capability
         self.schedulePolicy = LocalSchedulePolicy.v1
         self.clock = clock
@@ -165,8 +178,15 @@ public struct PlannerAPIService: Sendable {
             // sender could not be constructed for any reason, the UI must not offer to send.
             capability: CapabilityDTO(
                 canSend: mailSender != nil,
-                canSchedule: eventScheduler != nil
-            )
+                canSchedule: eventScheduler != nil,
+                canReschedule: eventRescheduler != nil,
+                canDraft: replyWriter != nil
+            ),
+            // Read off the provider itself rather than assumed. A local-model adapter answers
+            // `contentLeavesMachine = false` and the rail changes on its own.
+            assist: replyWriter.map {
+                AssistDTO.forProvider($0.providerLabel, contentLeavesMachine: $0.contentLeavesMachine)
+            } ?? .off
         )
         return APIJSON.encode(response)
     }
@@ -182,19 +202,28 @@ public struct PlannerAPIService: Sendable {
                 DraftsResponse(drafts: SyntheticContent.drafts(referenceDay: referenceDay))
             )
         }
-        let payload = items.map { item in
+        // Ranked here, once, by the rule in the domain — see `MailTriagePolicy` for the order
+        // and for why recency is the last key rather than the first.
+        let triaged = MailTriagePolicy.triage(items)
+        let payload = triaged.entries.map { entry in
             DraftDTO(
-                id: item.id,
-                title: item.title,
-                summary: item.summary,
+                id: entry.item.id,
+                title: entry.item.title,
+                summary: entry.item.summary,
                 kind: "reply",
-                sender: item.sender,
-                category: APICategory(item.category),
-                receivedAt: APIDateFormat.iso8601(item.receivedAt),
-                threadId: item.threadID
+                sender: entry.item.sender,
+                category: APICategory(entry.item.category),
+                receivedAt: APIDateFormat.iso8601(entry.item.receivedAt),
+                threadId: entry.item.threadID,
+                band: entry.band.wireName,
+                reason: entry.reason.rawValue,
+                why: entry.why,
+                unread: entry.item.isUnread
             )
         }
-        return APIJSON.encode(DraftsResponse(drafts: payload))
+        return APIJSON.encode(
+            DraftsResponse(drafts: payload, hiddenCount: triaged.hiddenCount)
+        )
     }
 
     /// How many inbox rows the triage list shows. Small on purpose: this is a review queue, not
@@ -300,6 +329,111 @@ public struct PlannerAPIService: Sendable {
                     start: APIDateFormat.iso8601(created.start),
                     end: APIDateFormat.iso8601(created.end),
                     htmlLink: created.link
+                )
+            )
+        } catch {
+            throw APIWriteFailure.provider(error)
+        }
+    }
+
+    /// Proposes a reply to one message in the inbox.
+    ///
+    /// Sends nothing and changes nothing. It is on a write route because it transmits the
+    /// user's own content off this machine, which is the thing worth gating even though no
+    /// mailbox is touched.
+    ///
+    /// The message is re-read from the inbox rather than taken from the request. That is the
+    /// whole reason the request carries only an id: the rule that a private message is never
+    /// transmitted then holds against the provider's own classification, and a client could not
+    /// smuggle private content to a model even deliberately, because there is no field for it.
+    func draftReply(_ body: Data) async throws -> Data {
+        guard let replyWriter else { throw APIWriteFailure.notPermitted }
+        guard let request = APIJSON.decode(DraftReplyRequest.self, from: body) else {
+            throw APIWriteFailure.invalid("That request could not be read.")
+        }
+        guard let intent = PlannerReplyIntent(rawValue: request.intent) else {
+            throw APIWriteFailure.invalid("That is not something it knows how to draft.")
+        }
+        guard let mailReader else { throw APIWriteFailure.notPermitted }
+        guard let items = try? await mailReader.mailItems(limit: Self.triageLimit),
+              let item = items.first(where: { $0.id == request.messageID }) else {
+            // Could not be found OR the inbox could not be read. Both are the same answer
+            // here, and neither says which — a probe for message ids is not a thing this
+            // route should answer.
+            throw APIWriteFailure.invalid("That message is no longer in the list.")
+        }
+
+        let drafting: PlannerReplyRequest
+        do {
+            drafting = try PlannerReplyRequest(
+                subject: item.title,
+                sender: item.sender,
+                snippet: item.summary,
+                intent: intent,
+                customInstruction: request.instruction,
+                isPrivate: item.isPrivate
+            )
+        } catch PlannerDraftingError.messageIsPrivate {
+            throw APIWriteFailure.invalid(
+                "That message is marked private, so its content is never sent to an assistant."
+            )
+        } catch let error as PlannerDraftingError {
+            throw APIWriteFailure.invalid(APIWriteFailure.message(for: error))
+        }
+
+        do {
+            let proposal = try await replyWriter.draft(drafting)
+            return APIJSON.encode(
+                DraftReplyResponse(ok: true, body: proposal.body, provider: proposal.provider)
+            )
+        } catch PlannerDraftingError.notSignedIn {
+            // Its own response: "could not be reached" sends someone to check their wifi when
+            // what they actually need is to sign in to the CLI.
+            throw APIWriteFailure.assistantSignedOut
+        } catch {
+            throw APIWriteFailure.provider(error)
+        }
+    }
+
+    /// Moves one event the user already has.
+    ///
+    /// Until this route existed, "Move it" opened the composer prefilled with the event's
+    /// details and INSERTED a second event, leaving the original where it was. That is the one
+    /// outcome a reschedule must not have, and it happened on the user's real calendar.
+    ///
+    /// The route changes times and nothing else: `MoveEventRequest` has no field that could
+    /// rename or re-describe an event, and the PATCH body underneath names only `start` and
+    /// `end`, so every part of the event this app never knew about survives it.
+    func moveEvent(_ body: Data) async throws -> Data {
+        guard let eventRescheduler else { throw APIWriteFailure.notPermitted }
+        guard let request = APIJSON.decode(MoveEventRequest.self, from: body) else {
+            throw APIWriteFailure.invalid("That change could not be read.")
+        }
+        guard let start = APIDateFormat.parse(request.start),
+              let end = APIDateFormat.parse(request.end) else {
+            throw APIWriteFailure.invalid("Check the start and end times.")
+        }
+        let move: PlannerEventMove
+        do {
+            move = try PlannerEventMove(
+                eventID: request.eventID,
+                calendarID: CalendarID(rawValue: request.calendarID),
+                start: start,
+                end: end
+            )
+        } catch let error as PlannerWriteError {
+            throw APIWriteFailure.invalid(APIWriteFailure.message(for: error))
+        }
+
+        do {
+            let moved = try await eventRescheduler.move(move)
+            return APIJSON.encode(
+                CreateEventResponse(
+                    ok: true,
+                    id: moved.id,
+                    start: APIDateFormat.iso8601(moved.start),
+                    end: APIDateFormat.iso8601(moved.end),
+                    htmlLink: moved.link
                 )
             )
         } catch {

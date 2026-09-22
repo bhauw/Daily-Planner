@@ -15,7 +15,9 @@
  * write endpoint is called; the footer states that no external action occurred.
  */
 
+import { useState } from "react";
 import { Button } from "../contract";
+import type { ReplyIntent } from "../contract";
 import { WarnIcon, LockIcon, CheckIcon } from "./icons";
 import { isSendAction, type DraftDetail } from "./data";
 import {
@@ -36,6 +38,11 @@ interface DraftEditorProps {
   onPreflight: () => void;
   onApprove: () => void;
   onReject: () => void;
+  /**
+   * Asks the engine for a proposal. Absent when no assistant is configured, which is what
+   * makes "this cannot generate" a structural fact rather than a disabled button.
+   */
+  onDraft?: (messageId: string, intent: ReplyIntent, instruction?: string) => Promise<string>;
 }
 
 const STEPS: DraftStatus[] = ["proposed", "edited", "preflighted", "approved"];
@@ -49,6 +56,7 @@ export function DraftEditor({
   onPreflight,
   onApprove,
   onReject,
+  onDraft,
 }: DraftEditorProps) {
   const send = isSendAction(draft.kind);
   const rejected = state.status === "rejected";
@@ -121,10 +129,18 @@ export function DraftEditor({
         <div className="field field--grow">
           <span className="field__label">Thread</span>
           <p className="triage__snippet">{detail.snippet}</p>
-          <p className="triage__notice" role="note">
-            No reply has been drafted for this thread. This round reads your inbox so you can
-            triage it — drafting and sending arrive in a later milestone.
-          </p>
+          {/*
+            This used to say drafting "arrives in a later milestone". It arrived. A message
+            that outlives the thing it describes is worse than no message, because it tells
+            someone a feature they are looking at does not exist yet.
+          */}
+          <ReplyBox
+            draftId={draft.id}
+            body={state.body}
+            disabled={rejected}
+            onEditBody={onEditBody}
+            onDraft={onDraft}
+          />
         </div>
       ) : (
         <>
@@ -183,6 +199,139 @@ export function DraftEditor({
           {footerNote(state.status)}
         </div>
       </div>
+    </div>
+  );
+}
+
+/*
+ * Draft a reply to a real inbox thread, in the pane where the thread is.
+ *
+ * The workbench used to be triage-only: it showed what arrived and told you drafting existed
+ * somewhere else. Reading a message and answering it are one action, so the answer belongs
+ * next to the thing being answered rather than behind a navigation step.
+ *
+ * Six buttons for the ordinary cases and a box for everything else — the same pair the composer
+ * offers, because two places that draft replies should not disagree about how.
+ */
+const INTENTS: { intent: ReplyIntent; label: string }[] = [
+  { intent: "accept", label: "Accept" },
+  { intent: "decline", label: "Decline" },
+  { intent: "reschedule", label: "Ask to move it" },
+  { intent: "acknowledge", label: "Acknowledge" },
+  { intent: "askQuestion", label: "Ask a question" },
+  { intent: "followUp", label: "Follow up" },
+];
+
+/** Matches PlannerReplyRequest.maxInstructionBytes, so the engine never has to refuse one. */
+const MAX_INSTRUCTION = 1000;
+
+function ReplyBox({
+  draftId,
+  body,
+  disabled,
+  onEditBody,
+  onDraft,
+}: {
+  draftId: string;
+  body: string;
+  disabled: boolean;
+  onEditBody: (v: string) => void;
+  onDraft?: (messageId: string, intent: ReplyIntent, instruction?: string) => Promise<string>;
+}) {
+  const [busy, setBusy] = useState<ReplyIntent | "custom" | null>(null);
+  const [instruction, setInstruction] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+
+  if (!onDraft) {
+    return (
+      <p className="triage__notice" role="note">
+        No assistant is configured, so nothing can be drafted here. You can still write a reply
+        yourself once sending is enabled.
+      </p>
+    );
+  }
+
+  async function propose(intent: ReplyIntent, typed?: string) {
+    setBusy(typed ? "custom" : intent);
+    setNote(null);
+    try {
+      const proposed = await onDraft!(draftId, intent, typed);
+      onEditBody(proposed);
+      setNote("Drafted for you. Read it before you approve it.");
+    } catch (failure) {
+      // A failure must not be a dead end — the reply can still be typed by hand.
+      setNote(failure instanceof Error ? failure.message : "The assistant could not be reached.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="reply">
+      <div className="reply__head">
+        <span className="field__label">Your reply</span>
+        <span className="reply__hint">Nothing is sent until you approve it.</span>
+      </div>
+
+      <div className="reply__quick" role="group" aria-label="Draft a reply">
+        {INTENTS.map(({ intent, label }) => (
+          <button
+            key={intent}
+            type="button"
+            className="compose__chip"
+            disabled={busy != null || disabled}
+            onClick={() => void propose(intent)}
+          >
+            {busy === intent ? "Writing…" : label}
+          </button>
+        ))}
+      </div>
+
+      <div className="reply__custom">
+        <label className="sr-only" htmlFor={`reply-instruction-${draftId}`}>
+          Tell the assistant what to write
+        </label>
+        <input
+          id={`reply-instruction-${draftId}`}
+          className="compose__custominput"
+          type="text"
+          placeholder="Or tell it what to say…"
+          value={instruction}
+          maxLength={MAX_INSTRUCTION}
+          disabled={busy != null || disabled}
+          onChange={(e) => setInstruction(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            if (instruction.trim()) void propose("accept", instruction.trim());
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="default"
+          disabled={busy != null || disabled || instruction.trim().length === 0}
+          onClick={() => void propose("accept", instruction.trim())}
+        >
+          {busy === "custom" ? "Writing…" : "Write it"}
+        </Button>
+      </div>
+
+      <textarea
+        className="field__textarea reply__body"
+        value={body}
+        disabled={disabled}
+        placeholder="Write your reply, or have it drafted above."
+        onChange={(e) => onEditBody(e.target.value)}
+        spellCheck
+        aria-label="Your reply"
+      />
+
+      {note && (
+        <p className="compose__assistnote compose__assistnote--said" role="status">
+          {note}
+        </p>
+      )}
     </div>
   );
 }

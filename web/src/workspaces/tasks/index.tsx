@@ -34,6 +34,8 @@ const WINDOW_START = 9 * 60;
 const WINDOW_END = 21 * 60;
 // A calm default start (11:00) for the keyboard "Block time" path.
 const DEFAULT_START = 11 * 60;
+// The keyboard path has no gap to read a length from, so it opens on an hour.
+const DEFAULT_DURATION = 60;
 
 interface Loaded {
   lists: TaskList[];
@@ -103,26 +105,28 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
     e.dataTransfer.setData("text/plain", task.id);
   }
 
-  function openCompose(task: TaskItem, listName: string, startMin: number) {
+  function openCompose(task: TaskItem, listName: string, startMin: number, durationMin: number) {
     setCompose({
       taskId: task.id,
       taskTitle: task.title,
       category: task.category,
       listName,
       startMin,
+      durationMin,
     });
   }
 
   // Keyboard-accessible path to a focus block (the WCAG alternative to dragging).
   function onBlockTime(task: TaskItem, fromList: string) {
-    openCompose(task, fromList, DEFAULT_START);
+    openCompose(task, fromList, DEFAULT_START, DEFAULT_DURATION);
   }
 
-  // Drag path: a task was dropped on the dayline at this start-minute.
-  function onDropStart(startMin: number) {
+  // Drag path: a task was dropped into a gap, which supplied both the start and
+  // the length the gap can hold.
+  function onDropStart(startMin: number, durationMin: number) {
     const dragged = dragRef.current;
     if (!dragged) return;
-    openCompose(dragged.task, dragged.list, startMin);
+    openCompose(dragged.task, dragged.list, startMin, durationMin);
     dragRef.current = null;
   }
 

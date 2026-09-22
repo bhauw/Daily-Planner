@@ -1,5 +1,5 @@
 /*
- * Putting something on the calendar, from inside the app.
+ * Putting something on the calendar, from inside the app — or moving something already on it.
  *
  * One step, not two. Creating an event is not like sending mail: the form IS
  * the review — every field that will be written is visible and editable right
@@ -13,7 +13,12 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "../components/Button";
-import { ApiError, type CreateEventRequest, type CreateEventResponse } from "../api/client";
+import {
+  ApiError,
+  type CreateEventRequest,
+  type CreateEventResponse,
+  type MoveEventRequest,
+} from "../api/client";
 import { addMinutesToInput, fromLocalInput, minutesBetweenInputs, toLocalInput } from "./datetime";
 import type { SchedulePrefill } from "./types";
 
@@ -22,6 +27,11 @@ type Phase = "edit" | "creating" | "created";
 interface SchedulerProps {
   prefill: SchedulePrefill;
   create: (request: CreateEventRequest) => Promise<CreateEventResponse>;
+  /**
+   * Moves an event that already exists. Required whenever a prefill can carry `move`; the desk
+   * only ever builds such a prefill when the engine reported `canReschedule`.
+   */
+  move?: (request: MoveEventRequest) => Promise<CreateEventResponse>;
   onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
   onWrote?: () => void;
@@ -29,7 +39,12 @@ interface SchedulerProps {
 
 const QUICK_MINUTES = [30, 60, 90, 120];
 
-export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: SchedulerProps) {
+export function Scheduler({ prefill, create, move, onClose, onBusyChange, onWrote }: SchedulerProps) {
+  // Moving is only offered when there is something to move it WITH. If a prefill names a target
+  // but no mover was wired, the form falls back to creating rather than pressing a button that
+  // cannot work — and it says "Add to calendar", so it never claims to move and then duplicate.
+  const target = move ? prefill.move : undefined;
+  const moving = target != null;
   const [title, setTitle] = useState(prefill.title);
   const [start, setStart] = useState(() => toLocalInput(prefill.start));
   const [end, setEnd] = useState(() => toLocalInput(prefill.end));
@@ -43,12 +58,12 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
   // Stated rather than merely enforced: the form says why the button is off, instead of leaving
   // the user pressing a dead control and guessing which field it dislikes.
   const problem = useMemo(() => {
-    if (title.trim().length === 0) return "Give it a name.";
+    if (!moving && title.trim().length === 0) return "Give it a name.";
     if (!fromLocalInput(start)) return "Check the start time.";
     if (!fromLocalInput(end)) return "Check the end time.";
     if (minutes == null || minutes <= 0) return "The end has to be after the start.";
     return null;
-  }, [title, start, end, minutes]);
+  }, [moving, title, start, end, minutes]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -60,13 +75,23 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
     onBusyChange?.(true);
     setError(null);
     try {
-      const result = await create({
-        title: title.trim(),
-        start: startISO,
-        end: endISO,
-        ...(location.trim() ? { location: location.trim() } : {}),
-        ...(notes.trim() ? { description: notes.trim() } : {}),
-      });
+      // A move sends the times and nothing else — the same shape the route accepts, so what is
+      // on screen is what is written. A create sends the whole draft, as before.
+      const result =
+        target && move
+          ? await move({
+              eventId: target.eventId,
+              calendarId: target.calendarId,
+              start: startISO,
+              end: endISO,
+            })
+          : await create({
+              title: title.trim(),
+              start: startISO,
+              end: endISO,
+              ...(location.trim() ? { location: location.trim() } : {}),
+              ...(notes.trim() ? { description: notes.trim() } : {}),
+            });
       setCreated(result);
       setPhase("created");
       onBusyChange?.(false);
@@ -75,7 +100,11 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
       setPhase("edit");
       onBusyChange?.(false);
       setError(
-        failure instanceof ApiError ? failure.message : "That could not be added to your calendar.",
+        failure instanceof ApiError
+          ? failure.message
+          : moving
+          ? "That could not be moved."
+          : "That could not be added to your calendar.",
       );
     }
   }
@@ -84,7 +113,7 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
     return (
       <div className="compose__done" role="status">
         <div className="compose__donemark" aria-hidden="true">✓</div>
-        <h2 className="compose__donetitle">On your calendar</h2>
+        <h2 className="compose__donetitle">{moving ? "Moved" : "On your calendar"}</h2>
         <p className="compose__donedetail">{title.trim()}</p>
         <div className="compose__actions">
           {created.htmlLink && (
@@ -103,19 +132,28 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
 
   return (
     <form className="compose__form" onSubmit={(e) => void submit(e)}>
-      <h2 className="compose__title">Put it on the day</h2>
+      <h2 className="compose__title">{moving ? "Move it" : "Put it on the day"}</h2>
       {prefill.context && <p className="compose__context">{prefill.context}</p>}
 
-      <label className="compose__field">
-        <span className="compose__label">What</span>
-        <input
-          className="compose__input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          autoFocus
-          autoComplete="off"
-        />
-      </label>
+      {moving ? (
+        // Shown, not editable. This route changes times and nothing else, so an editable name
+        // here would quietly discard whatever was typed into it.
+        <div className="compose__field">
+          <span className="compose__label">What</span>
+          <p className="compose__static">{title}</p>
+        </div>
+      ) : (
+        <label className="compose__field">
+          <span className="compose__label">What</span>
+          <input
+            className="compose__input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            autoFocus
+            autoComplete="off"
+          />
+        </label>
+      )}
 
       <div className="compose__row">
         <label className="compose__field">
@@ -159,15 +197,21 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
         ))}
       </div>
 
-      <label className="compose__field">
-        <span className="compose__label">Where <span className="compose__optional">optional</span></span>
-        <input className="compose__input" value={location} onChange={(e) => setLocation(e.target.value)} autoComplete="off" />
-      </label>
+      {/* Absent when moving, for the same reason the name is read-only: the route cannot
+          change them, so offering them would be a promise the write does not keep. */}
+      {!moving && (
+        <>
+          <label className="compose__field">
+            <span className="compose__label">Where <span className="compose__optional">optional</span></span>
+            <input className="compose__input" value={location} onChange={(e) => setLocation(e.target.value)} autoComplete="off" />
+          </label>
 
-      <label className="compose__field">
-        <span className="compose__label">Notes <span className="compose__optional">optional</span></span>
-        <textarea className="compose__textarea" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
-      </label>
+          <label className="compose__field">
+            <span className="compose__label">Notes <span className="compose__optional">optional</span></span>
+            <textarea className="compose__textarea" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
+          </label>
+        </>
+      )}
 
       {error && <p className="compose__error" role="alert">{error}</p>}
 
@@ -176,7 +220,7 @@ export function Scheduler({ prefill, create, onClose, onBusyChange, onWrote }: S
         <span className="compose__spacer" />
         {problem && <span className="compose__hint">{problem}</span>}
         <Button variant="primary" type="submit" disabled={busy || problem != null}>
-          {busy ? "Adding…" : "Add to calendar"}
+          {moving ? (busy ? "Moving…" : "Move it") : busy ? "Adding…" : "Add to calendar"}
         </Button>
       </div>
     </form>

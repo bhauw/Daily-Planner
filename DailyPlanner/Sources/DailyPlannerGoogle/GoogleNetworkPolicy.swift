@@ -109,9 +109,9 @@ private struct Query {
 private enum Endpoint {
     case oauth
     case provider
-    /// The two write endpoints, and only those two. Everything about `.provider` still holds —
-    /// exact host, exact path, no query — with the body and the JSON content type added, and
-    /// nothing else permitted to accompany them.
+    /// The three write endpoints, and only those three. Everything about `.provider` still
+    /// holds — exact host, exact path, no query — with the body and the JSON content type
+    /// added, and nothing else permitted to accompany them.
     case providerWrite
 
     /// The largest request body this policy will let out. The loopback server already caps what
@@ -124,11 +124,16 @@ private enum Endpoint {
             self = .oauth
             return
         }
-        if method == "POST" {
+        if method == "POST" || method == "PATCH" {
             // No query parameters on a write. `sendUpdates` in particular is how a calendar
-            // insert mails every attendee — that is a separate, deliberate feature, and it
-            // cannot be reached by accident from here.
-            guard WriteRoute(host: host, path: path) != nil, query.values.isEmpty else { return nil }
+            // insert or update mails every attendee — that is a separate, deliberate feature,
+            // and it cannot be reached by accident from here.
+            //
+            // The verb is matched inside `WriteRoute` rather than tested here, so each path is
+            // bound to exactly one method: a PATCH cannot reach the events COLLECTION (which
+            // would be a create), and a POST cannot reach a single event.
+            guard WriteRoute(method: method, host: host, path: path) != nil,
+                  query.values.isEmpty else { return nil }
             self = .providerWrite
             return
         }
@@ -327,31 +332,49 @@ private enum Route {
     }
 }
 
-/// The write allowlist: the exact two paths this app may POST to on a provider.
+/// The write allowlist: the exact three method+path pairs this app may write with.
 ///
 /// Kept apart from `Route` on purpose. `Route` answers "what may we read, and with which query
 /// parameters"; this answers "what may we change". Reading the two in one enum would make it
 /// easy to add a path to the wrong list.
+///
+/// The verb is part of the match, not a separate check the caller might forget. That is what
+/// makes the collection path create-only and the event path update-only: `PATCH .../events`
+/// and `POST .../events/{id}` are both refused, so neither shape of mistake can reach Google.
+///
+/// There is still no DELETE here, and PATCH is a PARTIAL update by definition — a body naming
+/// only `start` and `end` changes only the times. That is the property that makes "move it"
+/// safe to ship: it cannot blank a field it does not mention.
 private enum WriteRoute {
     /// `POST /gmail/v1/users/me/messages/send` — send one message.
     case gmailSend
     /// `POST /calendar/v3/calendars/{id}/events` — insert one event.
     case calendarInsert
+    /// `PATCH /calendar/v3/calendars/{id}/events/{eventId}` — change one existing event.
+    case calendarPatch
 
-    init?(host: String, path: String) {
+    init?(method: String, host: String, path: String) {
         guard path.hasPrefix("/"), !path.hasSuffix("/"), !path.contains("//") else { return nil }
         let components = path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
         if host == "gmail.googleapis.com" {
-            guard components == ["gmail", "v1", "users", "me", "messages", "send"] else { return nil }
+            guard method == "POST",
+                  components == ["gmail", "v1", "users", "me", "messages", "send"] else { return nil }
             self = .gmailSend
             return
         }
         if host == "www.googleapis.com" {
-            guard components.count == 5,
-                  Array(components.prefix(3)) == ["calendar", "v3", "calendars"],
+            guard Array(components.prefix(3)) == ["calendar", "v3", "calendars"],
+                  components.count >= 5,
                   components[4] == "events",
                   Route.isOpaquePathComponent(components[3]) else { return nil }
-            self = .calendarInsert
+            if components.count == 5 {
+                guard method == "POST" else { return nil }
+                self = .calendarInsert
+                return
+            }
+            guard components.count == 6, method == "PATCH",
+                  Route.isOpaquePathComponent(components[5]) else { return nil }
+            self = .calendarPatch
             return
         }
         return nil

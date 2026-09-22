@@ -21,6 +21,7 @@ function at(offsetMinutes: number): string {
 function event(over: Partial<PlannerEvent> & Pick<PlannerEvent, "id">): PlannerEvent {
   return {
     title: "Event",
+    calendarId: "primary",
     category: "school",
     kind: "event",
     start: at(0),

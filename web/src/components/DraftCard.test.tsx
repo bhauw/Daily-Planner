@@ -19,7 +19,11 @@ import { createRoot, type Root } from "react-dom/client";
 import type {
   CreateEventRequest,
   CreateEventResponse,
+  Capability,
   Draft,
+  DraftReplyRequest,
+  DraftReplyResponse,
+  MoveEventRequest,
   SendMailRequest,
   SendMailResponse,
 } from "../api/client";
@@ -31,6 +35,12 @@ const client = {
     throw new Error("not used");
   },
   createEvent: async (_r: CreateEventRequest): Promise<CreateEventResponse> => {
+    throw new Error("not used");
+  },
+  moveEvent: async (_r: MoveEventRequest): Promise<CreateEventResponse> => {
+    throw new Error("not used");
+  },
+  draftReply: async (_r: DraftReplyRequest): Promise<DraftReplyResponse> => {
     throw new Error("not used");
   },
 };
@@ -54,7 +64,7 @@ interface Mounted {
   dialog: () => HTMLElement | null;
 }
 
-async function mount(capability: { canSend: boolean; canSchedule: boolean }): Promise<Mounted> {
+async function mount(capability: Capability): Promise<Mounted> {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -64,6 +74,7 @@ async function mount(capability: { canSend: boolean; canSchedule: boolean }): Pr
       createElement(WriteDeskProvider, {
         capability,
         client,
+        assist: undefined,
         children: createElement(DraftCard, { draft }),
       }),
     );
@@ -93,7 +104,7 @@ function cleanup(m: Mounted) {
 
 describe("DraftCard actions", () => {
   it("offers a working in-app Reply when the grant can send", async () => {
-    const m = await mount({ canSend: true, canSchedule: true });
+    const m = await mount({ canSend: true, canSchedule: true, canReschedule: true, canDraft: false });
 
     expect(m.buttons().map((b) => b.textContent?.trim())).toContain("Reply");
     expect(m.dialog()).toBeNull();
@@ -109,7 +120,7 @@ describe("DraftCard actions", () => {
   });
 
   it("never renders a button with no behaviour behind it", async () => {
-    const m = await mount({ canSend: true, canSchedule: true });
+    const m = await mount({ canSend: true, canSchedule: true, canReschedule: true, canDraft: false });
 
     // Every button on the card must either open the desk, open a link, or copy. The old
     // "Review"/"Edit" pair satisfied none of those, and this is what catches their return.
@@ -122,7 +133,7 @@ describe("DraftCard actions", () => {
   });
 
   it("falls back to Gmail rather than an in-app composer when the grant cannot send", async () => {
-    const m = await mount({ canSend: false, canSchedule: false });
+    const m = await mount({ canSend: false, canSchedule: false, canReschedule: false, canDraft: false });
 
     const labels = m.buttons().map((b) => b.textContent?.trim());
     expect(labels).toContain("Reply in Gmail");
