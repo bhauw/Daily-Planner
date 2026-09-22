@@ -1,4 +1,14 @@
-# Daily Planner Feasibility Workspace
+# Daily Planner
+
+> A native macOS daily planning app with a local web UI, safety boundaries, and synthetic test fixtures.
+
+**Project status:** Phase One is complete. The read-only planning shell and its offline safety foundation are in place; the remaining integration work is documented below.
+
+If you build on this project, please credit **bhauw/Daily-Planner** and link back to this repository.
+
+## What This Is
+
+Daily Planner is an app project exploring a privacy-conscious native macOS planner with a local web interface. The repository contains the application source, supporting probes, tests, architecture notes, and synthetic fixtures used for offline verification.
 
 This repository contains disposable M0/M0.5 probes, the approved local-v1 architecture, the M1 read-only shell, and the M2A Google read-only foundation for a private native macOS Daily Planner. Automated acceptance uses synthetic content and generated roots; no Google write or vault-content access is authorized.
 
