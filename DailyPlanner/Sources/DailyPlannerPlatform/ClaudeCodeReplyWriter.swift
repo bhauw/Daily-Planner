@@ -20,7 +20,7 @@ import Foundation
  * the safety rail reads that rather than assuming. A local-model adapter implementing the same
  * port would answer false, and the rail would change on its own.
  */
-public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, Sendable {
+public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, PlannerMailSummarizing, Sendable {
     /// Where the CLI is. Resolved once at composition time, not searched for per request.
     public let executable: URL
     public let timeout: Duration
@@ -77,6 +77,14 @@ public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, Sendable {
     public func draft(_ request: PlannerReplyRequest) async throws -> PlannerProposedReply {
         let output = try await run(prompt: PlannerReplyPrompt.text(for: request))
         return try PlannerProposedReply(body: output, provider: providerLabel)
+    }
+
+    /// Summarises one message, on the same subprocess path and under the same bounds as a draft.
+    /// The prompt is `PlannerSummaryPrompt`'s, built from a request that has already refused
+    /// private and sensitive mail.
+    public func summarize(_ request: PlannerSummaryRequest) async throws -> PlannerMailSummary {
+        let output = try await run(prompt: PlannerSummaryPrompt.text(for: request))
+        return try PlannerMailSummary(text: output, provider: providerLabel)
     }
 
     /// The environment the CLI is given. A decision, not a detail — so it is a pure function of

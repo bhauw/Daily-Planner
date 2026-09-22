@@ -71,7 +71,7 @@ const DETAIL: Record<string, DraftDetail> = {
     subject: "Re: Example Corp Audit Co-op — interview time",
     body:
       "Hi Priya,\n\n" +
-      "Thank you for the invitation. Thursday at 14:30 collides with my ECON 250 midterm, " +
+      "Thank you for the invitation. Thursday at 14:30 collides with my ECONOMICS 250 midterm, " +
       "so I want to avoid proposing a time I can't hold.\n\n" +
       "Would Friday at 10:00 work instead? I'm clear from 09:00 to 18:00 that day and can " +
       "come to the downtown office or meet over video — whichever is easier for the team.\n\n" +

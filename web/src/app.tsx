@@ -132,7 +132,14 @@ interface ShellData {
   capability: Capability;
 }
 
-const NO_CAPABILITY: Capability = { canSend: false, canSchedule: false, canReschedule: false, canDraft: false };
+const NO_CAPABILITY: Capability = {
+  canSend: false,
+  canSchedule: false,
+  canReschedule: false,
+  canDraft: false,
+  canReadBody: false,
+  canSummarize: false,
+};
 
 function Shell({ pathname, navigate }: { pathname: string; navigate: (p: string) => void }) {
   const route = routeForPath(pathname);

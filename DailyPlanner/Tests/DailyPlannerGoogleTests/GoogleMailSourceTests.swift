@@ -115,7 +115,7 @@ final class GoogleMailSourceTests: XCTestCase {
         // Break caught: inference overrules the user. A label is a choice they made; every
         // signal below it is the app guessing.
         let summary = try summary(
-            id: "m1", subject: "ECON 250 midterm", sender: "recruiting@greenhouse.io",
+            id: "m1", subject: "DEMO 250 midterm", sender: "recruiting@greenhouse.io",
             labels: ["Finance"]
         )
         XCTAssertEqual(GoogleMailSource.category(for: summary), .finance)
@@ -123,8 +123,8 @@ final class GoogleMailSourceTests: XCTestCase {
 
     func testACourseCodeInTheSubjectMeansSchool() {
         // The strongest signal on a student's inbox, and it needs no list of institutions.
-        for subject in ["ECON 250 midterm moved", "Re: COMM295 group", "INDG 101 — Assignment 3",
-                        "[ECON 250] room change", "Fwd: CMPT 300 lab"] {
+        for subject in ["DEMO 250 midterm moved", "Re: DEMO295 group", "INDG 101 — Assignment 3",
+                "[DEMO 250] room change", "Fwd: CMPT 300 lab"] {
             XCTAssertTrue(
                 GoogleMailSource.containsCourseCode(subject),
                 "must read as a course code: \(subject)"
@@ -141,8 +141,8 @@ final class GoogleMailSourceTests: XCTestCase {
             "RE: 251",                        // no letters immediately before
             "ABCDE 251 is not a course",      // five letters, too many
             "A 251 single letter",            // one letter, too few
-            "ECONOMICS 250 is four digits",   // four digits
-            "ECONOMICS 250 is two digits",    // two digits
+            "ECONOMICS 250 is four digits",        // four digits
+            "ECONOMICS 250 is two digits",           // two digits
             "lowercase bus 251",              // course codes are written upper-case
             "BUS251X trailing letter",        // does not end at the digits
         ] {
@@ -278,5 +278,48 @@ final class GoogleMailSourceTests: XCTestCase {
 
         XCTAssertTrue(items.isEmpty)
         XCTAssertEqual(fake.calls.messageCalls, 0)
+    }
+
+    // MARK: - The body, for display
+
+    func testOpeningAMessageAsksGmailForTheFullFormatOnce() async throws {
+        // The list stays on `.metadata`; only the message being looked at is fetched in full.
+        let s = try summary(id: "m1")
+        let fake = FakeGmail(
+            page: GmailMessagePage(messages: [], nextPageToken: nil),
+            records: ["m1": GmailMessageRecord(
+                summary: s, bodyKind: .plainText, decodedBody: "Hello\r\n\r\n\r\nThere", attachments: []
+            )]
+        )
+        let body = try await source(fake).body(for: "m1")
+
+        XCTAssertEqual(fake.calls.formats, [.full])
+        XCTAssertEqual(body.text, "Hello\n\nThere")
+        XCTAssertFalse(body.isPrivate)
+    }
+
+    func testAnHTMLBodyIsShownAsTextWithoutItsStyleOrMarkup() throws {
+        let s = try summary(id: "m1")
+        let html = "<html><head><style>p{color:red}</style></head><body><p>Hi &amp; welcome</p>"
+            + "<p>Due <b>Friday</b></p><script>alert(1)</script></body></html>"
+        let body = GoogleMailSource.body(
+            from: GmailMessageRecord(summary: s, bodyKind: .html, decodedBody: html, attachments: []),
+            id: "m1"
+        )
+        XCTAssertEqual(body.text, "Hi & welcome\n\nDue Friday")
+    }
+
+    func testABodyTheDecoderCouldNotUnderstandIsWithheldNotGuessed() throws {
+        // `.full` classifies an ambiguous MIME tree private. It must not render.
+        let s = try summary(id: "m1", privacy: .private)
+        let body = GoogleMailSource.body(
+            from: GmailMessageRecord(summary: s, bodyKind: .unsupported, decodedBody: nil, attachments: [
+                EmailAttachmentMetadata(filename: "invite.ics", mimeType: "text/calendar", size: 10),
+            ]),
+            id: "m1"
+        )
+        XCTAssertNil(body.text)
+        XCTAssertTrue(body.isPrivate)
+        XCTAssertEqual(body.attachmentNames, ["invite.ics"])
     }
 }

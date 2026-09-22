@@ -15,7 +15,7 @@
  * you. The body textarea is the one elastic element and scrolls its own text.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ColumnHeader,
   ConnectionState,
@@ -108,6 +108,24 @@ function Loaded({
     return proposal.body;
   }
 
+  /*
+   * What the engine can do here, asked rather than assumed — a button for a route the engine
+   * did not build is the same bug as a "Reply" against a read-only grant.
+   *
+   * Stable identities (useCallback), because the body pane refetches whenever these change:
+   * a fresh function every render would reload the email on every keystroke in the reply.
+   */
+  const caps = useAsync(async () => (await api.settings()).capability);
+  // Optimistic while the settings load: withholding the fetch until then would flash "could not
+  // be loaded" on every open. An engine without the route answers 404 and the preview stays.
+  const canReadBody = caps.status !== "ready" || caps.data?.canReadBody === true;
+  const canSummarize = caps.data?.canSummarize === true;
+  const readBody = useCallback((id: string) => api.mailBody(id), [api]);
+  const summarize = useCallback(
+    (id: string) => api.summarizeMail({ messageId: id }),
+    [api],
+  );
+
   const items = useMemo<WorkItem[]>(
     () => drafts.map((draft) => ({ draft, detail: detailFor(draft) })),
     [drafts],
@@ -173,6 +191,8 @@ function Loaded({
           detail={selected.detail}
           state={selectedState}
           onDraft={onDraft}
+          readBody={canReadBody ? readBody : undefined}
+          summarize={canSummarize ? summarize : undefined}
           onEditSubject={(v) => update(selected.draft.id, (s) => editSubject(s, v))}
           onEditBody={(v) => update(selected.draft.id, (s) => editBody(s, v))}
           onPreflight={() => update(selected.draft.id, preflight)}

@@ -227,16 +227,26 @@ struct CapabilityDTO: Encodable {
     /// Whether an assistant is wired up to propose replies. Independent of the Google grant —
     /// it depends on a CLI or a local model being present, not on what the account permits.
     let canDraft: Bool
+    /// Whether a message's full body can be fetched for reading. Local only — nothing leaves.
+    let canReadBody: Bool
+    /// Whether a body can be summarised. Needs both a body and an assistant, and unlike reading
+    /// it sends the body off the machine, which is why it is reported apart from `canReadBody`.
+    let canSummarize: Bool
 
     static let none = CapabilityDTO(
         canSend: false, canSchedule: false, canReschedule: false, canDraft: false
     )
 
-    init(canSend: Bool, canSchedule: Bool, canReschedule: Bool, canDraft: Bool = false) {
+    init(
+        canSend: Bool, canSchedule: Bool, canReschedule: Bool, canDraft: Bool = false,
+        canReadBody: Bool = false, canSummarize: Bool = false
+    ) {
         self.canSend = canSend
         self.canSchedule = canSchedule
         self.canReschedule = canReschedule
         self.canDraft = canDraft
+        self.canReadBody = canReadBody
+        self.canSummarize = canSummarize
     }
 
     init(_ capability: GoogleGrantedCapability?) {
@@ -244,6 +254,8 @@ struct CapabilityDTO: Encodable {
         canSchedule = capability?.canCreateEvents ?? false
         canReschedule = capability?.canCreateEvents ?? false
         canDraft = false
+        canReadBody = false
+        canSummarize = false
     }
 }
 
@@ -531,6 +543,9 @@ enum APIWriteRoute: String, CaseIterable {
     /// the machine, which is the thing the guard exists to control — even though it changes
     /// nothing in their account and mails nobody.
     case draftReply = "/api/mail/draft"
+    /// Summarising a body. On the write side for the same reason as drafting — it sends content
+    /// off the machine — and this one sends MORE than drafting does: the body, not the snippet.
+    case summarizeMail = "/api/mail/summary"
 
     static func matching(_ path: String) -> APIWriteRoute? {
         APIWriteRoute(rawValue: path)
@@ -579,6 +594,32 @@ struct DraftReplyRequest: Decodable {
         case intent
         case instruction
     }
+}
+
+/// A message's body, for the Mail workbench to show. Never sent anywhere by the engine.
+struct MailBodyResponse: Encodable {
+    let id: String
+    /// Nil when the body could not be read safely; `unreadable` then says why, in words.
+    let text: String?
+    let truncated: Bool
+    let attachments: [String]
+    let unreadable: String?
+}
+
+/// A request to summarise one message. An id and nothing else, for the same reason as
+/// `DraftReplyRequest`: the engine reads the body itself, so there is no field to smuggle one in.
+struct SummarizeMailRequest: Decodable {
+    let messageID: String
+
+    enum CodingKeys: String, CodingKey {
+        case messageID = "messageId"
+    }
+}
+
+struct SummarizeMailResponse: Encodable {
+    let ok: Bool
+    let summary: String
+    let provider: String
 }
 
 struct DraftReplyResponse: Encodable {
@@ -727,6 +768,8 @@ enum APIWriteFailure: Error {
             return "The assistant could not be reached."
         case .notSignedIn:
             return "The Claude CLI is not signed in. Sign in to it and try again."
+        case .containsSensitiveContent:
+            return "That message looks like it holds a code, a password or an account detail, so it is not sent to an assistant."
         case .cancelled:
             return "That was cancelled."
         }

@@ -31,7 +31,14 @@ import type {
 } from "../api/client";
 import { WriteDeskProvider, useWriteDesk } from "./WriteDesk";
 
-const capability = { canSend: true, canSchedule: true, canReschedule: true, canDraft: false };
+const capability = {
+  canSend: true,
+  canSchedule: true,
+  canReschedule: true,
+  canDraft: false,
+  canReadBody: false,
+  canSummarize: false,
+};
 
 const client = {
   sendMail: async (_request: SendMailRequest): Promise<SendMailResponse> => {

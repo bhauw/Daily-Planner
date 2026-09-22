@@ -304,6 +304,10 @@ public final class EngineHost: NSObject, NSApplicationDelegate {
             eventScheduler: eventScheduler,
             eventRescheduler: eventRescheduler,
             replyWriter: replyWriter,
+            // The same Gmail source reads a body on demand, on the read grant it already has.
+            // The same CLI summarises one — but only when asked, on its own route.
+            mailBodyReader: mail,
+            summarizer: replyWriter,
             capability: capability
         )
     }

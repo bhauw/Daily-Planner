@@ -18,7 +18,9 @@
 import { useState } from "react";
 import { Button } from "../contract";
 import type { ReplyIntent } from "../contract";
+import type { MailBody } from "../../api/client";
 import { WarnIcon, LockIcon, CheckIcon } from "./icons";
+import { MessageBody } from "./MessageBody";
 import { isSendAction, type DraftDetail } from "./data";
 import {
   canApprove,
@@ -43,6 +45,10 @@ interface DraftEditorProps {
    * makes "this cannot generate" a structural fact rather than a disabled button.
    */
   onDraft?: (messageId: string, intent: ReplyIntent, instruction?: string) => Promise<string>;
+  /** Fetches the message's full body, to read. Absent when the engine cannot. */
+  readBody?: (id: string) => Promise<MailBody>;
+  /** Summarises it — the one call that sends the body off the machine. Absent with no assistant. */
+  summarize?: (id: string) => Promise<{ summary: string; provider: string }>;
 }
 
 const STEPS: DraftStatus[] = ["proposed", "edited", "preflighted", "approved"];
@@ -57,6 +63,8 @@ export function DraftEditor({
   onApprove,
   onReject,
   onDraft,
+  readBody,
+  summarize,
 }: DraftEditorProps) {
   const send = isSendAction(draft.kind);
   const rejected = state.status === "rejected";
@@ -123,12 +131,16 @@ export function DraftEditor({
         )}
       </section>
 
-      {/* Payload. A real inbox thread has no drafted reply, so it is shown read-only and
-          plainly labelled rather than dressed up as something approvable. */}
+      {/* Payload. A real inbox thread has no drafted reply, so the email itself is shown
+          read-only and plainly labelled rather than dressed up as something approvable. */}
       {detail.isTriage ? (
         <div className="field field--grow">
-          <span className="field__label">Thread</span>
-          <p className="triage__snippet">{detail.snippet}</p>
+          <MessageBody
+            messageId={draft.id}
+            snippet={detail.snippet}
+            readBody={readBody}
+            summarize={summarize}
+          />
           {/*
             This used to say drafting "arrives in a later milestone". It arrived. A message
             that outlives the thing it describes is worse than no message, because it tells

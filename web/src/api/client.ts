@@ -136,6 +136,13 @@ export interface Capability {
    * it depends on a CLI or a local model being on the machine, not on what the account allows.
    */
   canDraft: boolean;
+  /** Whether a message's full body can be fetched to read. Local only; nothing leaves. */
+  canReadBody: boolean;
+  /**
+   * Whether a body can be summarised. Needs a body AND an assistant, and unlike reading it sends
+   * the body off this Mac — which is why the two are reported apart.
+   */
+  canSummarize: boolean;
 }
 
 /**
@@ -251,6 +258,32 @@ export interface DraftReplyRequest {
    * to smuggle content in.
    */
   instruction?: string;
+}
+
+/**
+ * One message's body, for the Mail workbench to show.
+ *
+ * DISPLAY ONLY. Drafting never reads it: `DraftReplyRequest` still carries an id, and the engine
+ * still builds the draft prompt from the snippet. Seeing more does not mean sending more.
+ */
+export interface MailBody {
+  id: string;
+  /** Null when the body could not be read safely; `unreadable` says why. */
+  text: string | null;
+  truncated: boolean;
+  attachments: string[];
+  unreadable: string | null;
+}
+
+/** An id and nothing else — the engine re-reads the body itself, so none can be supplied. */
+export interface SummarizeMailRequest {
+  messageId: string;
+}
+
+export interface SummarizeMailResponse {
+  ok: boolean;
+  summary: string;
+  provider: string;
 }
 
 export interface DraftReplyResponse {
@@ -481,6 +514,11 @@ export const api = {
   /** Moves an existing event. A POST here; the engine sends Google a PATCH. */
   moveEvent: (request: MoveEventRequest) =>
     post<MoveEventRequest, CreateEventResponse>("/api/calendar/events/move", request),
+  /** One message's body, to read. Local: the engine sends it nowhere. */
+  mailBody: (id: string) => get<MailBody>(`/api/mail/body?id=${encodeURIComponent(id)}`),
+  /** Summarises one message. Sends its body to the assistant — only ever on request. */
+  summarizeMail: (request: SummarizeMailRequest) =>
+    post<SummarizeMailRequest, SummarizeMailResponse>("/api/mail/summary", request),
   /** Asks for a proposed reply. Sends nothing and changes nothing in the account. */
   draftReply: (request: DraftReplyRequest) =>
     post<DraftReplyRequest, DraftReplyResponse>("/api/mail/draft", request),

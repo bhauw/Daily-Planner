@@ -113,6 +113,7 @@ describe("every route carries the keys the client reads", () => {
       "/api/calendar/events/move",
       "/api/mail/draft",
       "/api/mail/send",
+      "/api/mail/summary",
     ]);
   });
 
@@ -169,6 +170,8 @@ describe("every route carries the keys the client reads", () => {
       // False even on a full write grant: drafting needs an assistant on the machine, not a
       // permission from Google, and the contract fixture wires none.
       canDraft: false,
+      canReadBody: false,
+      canSummarize: false,
     });
   });
 
@@ -181,6 +184,8 @@ describe("every route carries the keys the client reads", () => {
       // engine ever sent a string here, "Move it" would silently start duplicating again.
       expect(typeof settings.capability.canReschedule).toBe("boolean");
       expect(typeof settings.capability.canDraft).toBe("boolean");
+      expect(typeof settings.capability.canReadBody).toBe("boolean");
+      expect(typeof settings.capability.canSummarize).toBe("boolean");
       // The assistant is described separately from the write mode, because it answers a
       // different question: not what may be done to the account, but where content goes.
       requires(settings.assist, ["enabled", "provider", "contentLeavesMachine", "label"]);
@@ -191,6 +196,8 @@ describe("every route carries the keys the client reads", () => {
       canSchedule: false,
       canReschedule: false,
       canDraft: false,
+      canReadBody: false,
+      canSummarize: false,
     });
     // Sample data is nobody's mail, so there is nothing to draft against.
     expect(routes["/api/settings"].assist.enabled).toBe(false);

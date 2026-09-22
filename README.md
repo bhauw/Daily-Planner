@@ -2,9 +2,9 @@
 
 > A native macOS daily planning app with a local web UI, safety boundaries, and synthetic test fixtures.
 
-**Public snapshot:** `0.2.0`
+**Public snapshot:** `0.2.1`
 
-**Project status:** Phase One is complete and Phase Two is in progress. The read-only planning shell is being extended with richer mail and task workflows while the offline safety foundation remains the release gate.
+**Project status:** Between phases. Phase One is complete, and Phase Two is actively being built. This snapshot adds mail-body retrieval and rendering while the offline safety foundation remains the release gate.
 
 If you build on this project, please credit **bhauw/Daily-Planner** and link back to this repository.
 
@@ -41,6 +41,8 @@ The approved M2A plan authorizes the offline Google read-only foundation. Live G
 - Published only sanitized source, tests, synthetic fixtures, and project documentation.
 - Added the first in-context reply-drafting workflow and expanded mail workbench behavior.
 - Added user-made topic colors and task placement between existing schedule blocks.
+- Added bounded mail-body retrieval, sanitization, and an in-pane message view.
+- Extended the Swift/TypeScript contract for mail-body routes and assistant-backed reply flows.
 
 ### Partially Finished
 
@@ -49,11 +51,12 @@ The approved M2A plan authorizes the offline Google read-only foundation. Live G
 - Sandboxed app/helper isolation is deferred to a future architecture pass.
 - Live provider content remains behind the connection boundary and is not used by automated tests.
 - The reply-drafting workflow still requires an explicitly configured assistant and user approval before any external action.
+- Mail-body retrieval is read-only and remains bounded by provider, route, and content-size policies.
 - Packaging and release automation remain local development workflows rather than hosted CI.
 
 ### Next Steps
 
-1. Add focused tests for reply drafting, mail state transitions, and the new task/topic workflows.
+1. Finish focused tests for mail-body rendering, reply drafting, and state transitions.
 2. Complete the user-authorized live read-only canary without recording credentials or provider content.
 3. Improve setup and local verification documentation using synthetic examples only.
 4. Revisit sandboxed app/helper isolation after the local-v1 architecture is stable.

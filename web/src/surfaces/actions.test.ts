@@ -24,7 +24,7 @@ const CAN_WRITE: ActionCapability = { canSend: true, canSchedule: true, canResch
 const event: PlannerEvent = {
   id: "e1",
   calendarId: "primary",
-  title: "ECON 295 · Managerial Economics",
+  title: "ECONOMICS 295 · Managerial Economics",
   category: "school",
   kind: "event",
   start: "2026-09-16T11:00:00-07:00",

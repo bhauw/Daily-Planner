@@ -9,8 +9,8 @@ import DailyPlannerDomain
 /// enough for sender, subject, snippet and labels, and asking for less is the cheaper and more
 /// private choice.
 public struct GoogleMailSource: PlannerMailReading, Sendable {
-    private let client: any GmailReading
-    private let tokens: any GoogleAccessTokenProviding
+    fileprivate let client: any GmailReading
+    fileprivate let tokens: any GoogleAccessTokenProviding
     /// How far back the triage list looks. Bounded so a long-dormant inbox cannot page forever.
     private let lookbackDays: Int
 
@@ -142,7 +142,7 @@ public struct GoogleMailSource: PlannerMailReading, Sendable {
         let from = sender.lowercased()
         let text = MailTriagePolicy.normalized(subject)
 
-        // A course code in the subject — "ECON 250", "ECON 295", "INDG 101". This is the
+        // A course code in the subject — "ECONOMICS 250", "ECONOMICS 295", "INDG 101". This is the
         // strongest signal on a student's inbox and it needs no list of institutions.
         if containsCourseCode(subject) { return .school }
 
@@ -174,7 +174,7 @@ public struct GoogleMailSource: PlannerMailReading, Sendable {
         return nil
     }
 
-    /// Two to four letters, a space or not, then exactly three digits: "ECON 250", "COMM295".
+    /// Two to four letters, a space or not, then exactly three digits: "ECONOMICS 250", "COMM295".
     /// Requires the letters to be upper-case, which is how course codes are written and which
     /// keeps it from firing on ordinary prose.
     static func containsCourseCode(_ subject: String) -> Bool {
@@ -204,5 +204,41 @@ public struct GoogleMailSource: PlannerMailReading, Sendable {
             index = max(cursor, index + 1)
         }
         return false
+    }
+}
+
+// MARK: - The body, for display
+
+/// Reading one message in full, when he opens it.
+///
+/// The triage list above stays on `.metadata` — a list of twenty-five rows has no business
+/// downloading twenty-five bodies. This is one message, fetched when it is looked at, on the
+/// `gmail.readonly` grant the list already uses.
+///
+/// The MIME walk and the base64url decode are `GmailReadClient`'s, which already bounds both and
+/// fails closed on a shape it does not understand. This only picks what to show from its result.
+extension GoogleMailSource: PlannerMailBodyReading {
+    public func body(for id: String) async throws -> PlannerMailBody {
+        let messageID = try GmailMessageID(validating: id)
+        let token = try await tokens.accessToken()
+        let record = try await client.message(id: messageID, format: .full, accessToken: token)
+        return Self.body(from: record, id: id)
+    }
+
+    static func body(from record: GmailMessageRecord, id: String) -> PlannerMailBody {
+        let text: String?
+        switch (record.bodyKind, record.decodedBody) {
+        case let (.plainText, body?): text = PlannerMailText.fromPlain(body)
+        case let (.html, body?): text = PlannerMailText.fromHTML(body)
+        default: text = nil
+        }
+        return PlannerMailBody(
+            id: id,
+            subject: record.summary.subject,
+            sender: record.summary.sender,
+            text: text,
+            attachmentNames: record.attachments.map(\.filename),
+            isPrivate: record.summary.privacyClass == .private
+        )
     }
 }

@@ -15,7 +15,10 @@ import type {
   CreateEventResponse,
   DraftReplyRequest,
   DraftReplyResponse,
+  MailBody,
   MoveEventRequest,
+  SummarizeMailRequest,
+  SummarizeMailResponse,
   DraftsResponse,
   Health,
   PlannerEvent,
@@ -37,13 +40,13 @@ function iso(hhmm: string): string {
 const queue: PlannerEvent[] = [
   { id: "q1", title: "Example Corp Audit Co-op — interview time", category: "career", kind: "event", start: iso("08:42"), end: null, due: iso("18:00"), location: null , calendarId: "primary" },
   { id: "q2", title: "INDG 101 — Assignment 3", category: "school", kind: "deadline", start: iso("23:59"), end: null, due: iso("23:59"), location: null , calendarId: "primary" },
-  { id: "q3", title: "ECON 250 — Midterm 2 review posted", category: "school", kind: "event", start: iso("14:30"), end: null, due: null, location: null , calendarId: "primary" },
+  { id: "q3", title: "ECONOMICS 250 — Midterm 2 review posted", category: "school", kind: "event", start: iso("14:30"), end: null, due: null, location: null , calendarId: "primary" },
   { id: "q4", title: "Example Consulting coffee chat — reschedule ask", category: "career", kind: "event", start: iso("09:15"), end: null, due: null, location: null , calendarId: "primary" },
   { id: "q5", title: "Investment Club — pitch night sign-up", category: "personal", kind: "extracurricular", start: iso("17:00"), end: null, due: null, location: null , calendarId: "primary" },
 ];
 
 const schedule: PlannerEvent[] = [
-  { id: "s1", title: "ECON 250 Lecture", category: "school", kind: "event", start: iso("09:00"), end: iso("10:20"), due: null, location: "AQ 3150" , calendarId: "primary" },
+  { id: "s1", title: "ECONOMICS 250 Lecture", category: "school", kind: "event", start: iso("09:00"), end: iso("10:20"), due: null, location: "AQ 3150" , calendarId: "primary" },
   { id: "s2", title: "Focus — Assignment 3", category: "school", kind: "deadline", start: iso("11:00"), end: iso("12:00"), due: null, location: null , calendarId: "primary" },
   { id: "s3", title: "Coffee chat — Example Consulting", category: "career", kind: "event", start: iso("13:30"), end: iso("14:15"), due: null, location: "Example Cafe" , calendarId: "primary" },
   { id: "s4", title: "Investment Club", category: "personal", kind: "extracurricular", start: iso("15:00"), end: iso("16:00"), due: null, location: "SUB 2270" , calendarId: "primary" },
@@ -105,8 +108,8 @@ const drafts: DraftsResponse = {
   drafts: [
     { id: "u1", title: "Security alert: new sign-in", summary: "A new sign-in from a device we do not recognise.", kind: "reply", sender: "no-reply@accounts.example.com", category: "other", receivedAt: null, threadId: "thread-u1", band: "urgent", reason: "security", why: "Security warning — \"new sign in\"", unread: true },
     { id: "u2", title: "Your interview is confirmed", summary: "Thursday 14:30 with the audit team.", kind: "reply", sender: "recruiting@example.com", category: "career", receivedAt: null, threadId: "thread-u2", band: "urgent", reason: "interview", why: "Interview — \"interview\"", unread: true },
-    { id: "d4", title: "ECON 250 — midterm room change", summary: "The Thursday midterm moves to AQ 3150. No action needed unless you had a conflict.", kind: "reply", sender: "registrar@example.edu", category: "school", receivedAt: null, threadId: "thread-d4", band: "ordinary", reason: "category", why: "School", unread: true },
-    { id: "d1", title: "Reply — Example Corp recruiter", summary: "Confirms Thursday 14:30, notes the ECON 250 midterm conflict, proposes Friday 10:00 instead.", kind: "reply", sender: "recruiter@example.com", category: "career", receivedAt: null, threadId: "thread-d1", band: "ordinary", reason: "category", why: "Recruiting", unread: false },
+    { id: "d4", title: "ECONOMICS 250 — midterm room change", summary: "The Thursday midterm moves to AQ 3150. No action needed unless you had a conflict.", kind: "reply", sender: "registrar@example.edu", category: "school", receivedAt: null, threadId: "thread-d4", band: "ordinary", reason: "category", why: "School", unread: true },
+    { id: "d1", title: "Reply — Example Corp recruiter", summary: "Confirms Thursday 14:30, notes the ECONOMICS 250 midterm conflict, proposes Friday 10:00 instead.", kind: "reply", sender: "recruiter@example.com", category: "career", receivedAt: null, threadId: "thread-d1", band: "ordinary", reason: "category", why: "Recruiting", unread: false },
     { id: "d5", title: "Your statement is ready", summary: "September statement for your chequing account.", kind: "reply", sender: "alerts@example-bank.com", category: "finance", receivedAt: null, threadId: "thread-d5", band: "ordinary", reason: "category", why: "Finance", unread: true },
     { id: "d2", title: "Calendar + Task bundle", summary: "Creates the Example Consulting chat, a prep task, and a 25-minute transit buffer.", kind: "bundle" },
   ],
@@ -134,7 +137,14 @@ const settings: Settings = {
     externalWrites: true,
     label: "Send & schedule · nothing leaves without your confirmation",
   },
-  capability: { canSend: true, canSchedule: true, canReschedule: true, canDraft: true },
+  capability: {
+    canSend: true,
+    canSchedule: true,
+    canReschedule: true,
+    canDraft: true,
+    canReadBody: true,
+    canSummarize: true,
+  },
   assist: {
     enabled: true,
     provider: "Claude (your subscription)",
@@ -170,6 +180,47 @@ const tasks: TasksResponse = {
 };
 
 const health: Health = { ok: true, mode: "send-and-schedule" };
+
+/*
+ * Mock bodies. Long enough to exercise the clamp and the "Show whole email" toggle, and one
+ * withheld, so the unreadable state is visible in dev rather than only against a real inbox.
+ */
+const BODY_D4 = [
+  "Hi all,",
+  "",
+  "The Thursday midterm for ECONOMICS 250 moves from WMC 3210 to AQ 3150. The time is unchanged: 14:30 to 16:20.",
+  "",
+  "Bring your student card. Calculators must be non-programmable. Formula sheets are provided.",
+  "",
+  "If you have an accommodation letter, the Centre for Accessible Learning has already been told about the new room and nothing changes for you.",
+  "",
+  "If you had a conflict with the original slot and have not yet told me, reply to this message by Tuesday at noon.",
+  "",
+  ...Array.from({ length: 14 }, (_, i) => `Topic ${i + 1}: chapters ${i + 1} and ${i + 2}, with the practice set.`),
+  "",
+  "See you Thursday,",
+  "Registrar's office",
+].join("\n");
+
+function mockBody(id: string): MailBody {
+  if (id === "u1") {
+    return {
+      id,
+      text: null,
+      truncated: false,
+      attachments: [],
+      unreadable: "This message could not be read safely, so its body is not shown.",
+    };
+  }
+  const draft = drafts.drafts.find((d) => d.id === id);
+  return {
+    id,
+    text: id === "d4" ? BODY_D4 : draft?.summary ?? "",
+    truncated: false,
+    attachments: id === "d4" ? ["room-map.pdf"] : [],
+    unreadable: null,
+  };
+}
 
 const ROUTES: Record<string, unknown> = {
   "/api/health": health,
@@ -254,6 +305,21 @@ const WRITES: Record<string, (body: any) => Response> = {
     console.info("[dev] mock draft — no assistant was called", { intent: body.intent });
     return json(response);
   },
+  "/api/mail/summary": (body: SummarizeMailRequest) => {
+    if (!body?.messageId?.trim()) return fail(400, "invalid_request", "That request could not be read.");
+    const message = mockBody(body.messageId);
+    if (!message.text) {
+      return fail(400, "invalid_request", "That message is marked private, so its content is never sent to an assistant.");
+    }
+    const response: SummarizeMailResponse = {
+      ok: true,
+      summary:
+        "- Mock summary (dev only): nothing was sent to any assistant.\n" +
+        `- The message is ${message.text.length} characters long.`,
+      provider: "Mock assistant (dev only)",
+    };
+    return json(response);
+  },
   "/api/calendar/events/move": (body: MoveEventRequest) => {
     // Mirrors the engine's refusals, so a bug in the client surfaces in dev rather than only
     // against a real calendar. The drift that hid the /api/week bug was exactly this gap.
@@ -283,8 +349,9 @@ export function installMockEngine() {
   const realFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
-    const path = url.startsWith("http") ? new URL(url).pathname : url;
-    const known = path in ROUTES || path in WRITES;
+    const full = url.startsWith("http") ? new URL(url) : new URL(url, "http://mock.invalid");
+    const path = full.pathname;
+    const known = path in ROUTES || path in WRITES || path === "/api/mail/body";
     if (!known) return realFetch(input, init);
 
     const auth = new Headers(init?.headers).get("Authorization");
@@ -308,6 +375,11 @@ export function installMockEngine() {
     }
 
     if (path in WRITES) return fail(405, "method_not_allowed", "Method not allowed.");
+    if (path === "/api/mail/body") {
+      const id = full.searchParams.get("id");
+      if (!id) return fail(400, "invalid_request", "Which message?");
+      return json(mockBody(id));
+    }
     return json(ROUTES[path]);
   };
   // eslint-disable-next-line no-console

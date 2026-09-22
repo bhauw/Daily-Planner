@@ -104,7 +104,7 @@ function cleanup(m: Mounted) {
 
 describe("DraftCard actions", () => {
   it("offers a working in-app Reply when the grant can send", async () => {
-    const m = await mount({ canSend: true, canSchedule: true, canReschedule: true, canDraft: false });
+    const m = await mount({ canSend: true, canSchedule: true, canReschedule: true, canDraft: false, canReadBody: false, canSummarize: false });
 
     expect(m.buttons().map((b) => b.textContent?.trim())).toContain("Reply");
     expect(m.dialog()).toBeNull();
@@ -120,7 +120,7 @@ describe("DraftCard actions", () => {
   });
 
   it("never renders a button with no behaviour behind it", async () => {
-    const m = await mount({ canSend: true, canSchedule: true, canReschedule: true, canDraft: false });
+    const m = await mount({ canSend: true, canSchedule: true, canReschedule: true, canDraft: false, canReadBody: false, canSummarize: false });
 
     // Every button on the card must either open the desk, open a link, or copy. The old
     // "Review"/"Edit" pair satisfied none of those, and this is what catches their return.
@@ -133,7 +133,7 @@ describe("DraftCard actions", () => {
   });
 
   it("falls back to Gmail rather than an in-app composer when the grant cannot send", async () => {
-    const m = await mount({ canSend: false, canSchedule: false, canReschedule: false, canDraft: false });
+    const m = await mount({ canSend: false, canSchedule: false, canReschedule: false, canDraft: false, canReadBody: false, canSummarize: false });
 
     const labels = m.buttons().map((b) => b.textContent?.trim());
     expect(labels).toContain("Reply in Gmail");

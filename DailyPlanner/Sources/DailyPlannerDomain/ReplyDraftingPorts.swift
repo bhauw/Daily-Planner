@@ -41,6 +41,9 @@ public enum PlannerDraftingError: Error, Equatable, CaseIterable, Sendable {
     /// because the person can fix this one themselves in about ten seconds, and only if they
     /// are told which of the two it is.
     case notSignedIn
+    /// The message reads as though it holds a credential, a health record or an account number.
+    /// Only raised on a SUMMARY, the one path that sends a body: he can read it, it does not leave.
+    case containsSensitiveContent
     case cancelled
 }
 
@@ -213,7 +216,8 @@ extension PlannerDraftingError: PlannerWriteFailure {
         switch self {
         case .cancelled: return .cancelled
         case .unavailable, .notSignedIn: return .unavailable
-        case .messageIsPrivate, .nothingToAnswer, .tooLarge, .instructionTooLong, .emptyReply:
+        case .messageIsPrivate, .nothingToAnswer, .tooLarge, .instructionTooLong, .emptyReply,
+             .containsSensitiveContent:
             return .refused
         }
     }

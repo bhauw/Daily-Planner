@@ -26,6 +26,12 @@ public struct PlannerAPIService: Sendable {
     /// Proposes replies. Nil when no assistant is wired, which is what makes "this app cannot
     /// generate" structural rather than a setting. Independent of the Google grant.
     private let replyWriter: (any PlannerReplyDrafting)?
+    /// Fetches one message's body for display. Local only — see `MailBodyPorts.swift`.
+    private let mailBodyReader: (any PlannerMailBodyReading)?
+    /// Summarises a body, which sends it off the machine. Nil with no assistant.
+    private let summarizer: (any PlannerMailSummarizing)?
+    /// Decides whether a body reads as sensitive enough never to be sent to a model.
+    private let contentClassifier: any GoogleContentClassifying
     /// What the connected grant permits. Nil when no account is connected.
     private let capability: GoogleGrantedCapability?
     private let schedulePolicy: LocalSchedulePolicy
@@ -69,6 +75,9 @@ public struct PlannerAPIService: Sendable {
         self.eventRescheduler = nil
         // Sample data is not anybody's mail, so there is nothing to draft against.
         self.replyWriter = nil
+        self.mailBodyReader = nil
+        self.summarizer = nil
+        self.contentClassifier = DeterministicGoogleContentPrivacyClassifier()
         self.capability = nil
         self.schedulePolicy = LocalSchedulePolicy.v1
         self.clock = FixedClock(referenceDate)
@@ -95,6 +104,9 @@ public struct PlannerAPIService: Sendable {
         eventScheduler: (any PlannerEventScheduling)? = nil,
         eventRescheduler: (any PlannerEventRescheduling)? = nil,
         replyWriter: (any PlannerReplyDrafting)? = nil,
+        mailBodyReader: (any PlannerMailBodyReading)? = nil,
+        summarizer: (any PlannerMailSummarizing)? = nil,
+        contentClassifier: any GoogleContentClassifying = DeterministicGoogleContentPrivacyClassifier(),
         capability: GoogleGrantedCapability? = nil
     ) {
         self.planning = PlanningPreviewWorkflow(
@@ -111,6 +123,9 @@ public struct PlannerAPIService: Sendable {
         self.eventScheduler = eventScheduler
         self.eventRescheduler = eventRescheduler
         self.replyWriter = replyWriter
+        self.mailBodyReader = mailBodyReader
+        self.summarizer = summarizer
+        self.contentClassifier = contentClassifier
         self.capability = capability
         self.schedulePolicy = LocalSchedulePolicy.v1
         self.clock = clock
@@ -180,7 +195,9 @@ public struct PlannerAPIService: Sendable {
                 canSend: mailSender != nil,
                 canSchedule: eventScheduler != nil,
                 canReschedule: eventRescheduler != nil,
-                canDraft: replyWriter != nil
+                canDraft: replyWriter != nil,
+                canReadBody: mailBodyReader != nil,
+                canSummarize: mailBodyReader != nil && summarizer != nil
             ),
             // Read off the provider itself rather than assumed. A local-model adapter answers
             // `contentLeavesMachine = false` and the rail changes on its own.
@@ -389,6 +406,73 @@ public struct PlannerAPIService: Sendable {
         } catch PlannerDraftingError.notSignedIn {
             // Its own response: "could not be reached" sends someone to check their wifi when
             // what they actually need is to sign in to the CLI.
+            throw APIWriteFailure.assistantSignedOut
+        } catch {
+            throw APIWriteFailure.provider(error)
+        }
+    }
+
+    var canReadMailBody: Bool { mailBodyReader != nil }
+
+    /// One message's body, for display.
+    ///
+    /// Read-only and local: this returns the body to the page on this Mac and sends it nowhere.
+    /// The drafting route does not call it — `draftReply` still builds its prompt from the
+    /// triage snippet — so being able to READ a body changes nothing about what is transmitted.
+    func mailBody(id: String) async throws -> Data {
+        guard let mailBodyReader else { throw APIWriteFailure.notPermitted }
+        let body = try await mailBodyReader.body(for: id)
+        return APIJSON.encode(
+            MailBodyResponse(
+                id: body.id,
+                text: body.text,
+                truncated: body.isTruncated,
+                attachments: body.attachmentNames,
+                unreadable: body.text == nil
+                    ? (body.isPrivate
+                        ? "This message could not be read safely, so its body is not shown."
+                        : "This message has no text the app can show.")
+                    : nil
+            )
+        )
+    }
+
+    /// Summarises one message.
+    ///
+    /// The one route that sends a BODY off the machine, and only when he asks. Like drafting, the
+    /// request carries an id only: the body is re-read here, so a client cannot supply content,
+    /// and the private and sensitive refusals hold against the engine's own copy.
+    func summarizeMail(_ body: Data) async throws -> Data {
+        guard let summarizer, let mailBodyReader else { throw APIWriteFailure.notPermitted }
+        guard let request = APIJSON.decode(SummarizeMailRequest.self, from: body),
+              !request.messageID.isEmpty, request.messageID.utf8.count <= 256 else {
+            throw APIWriteFailure.invalid("That request could not be read.")
+        }
+        guard let message = try? await mailBodyReader.body(for: request.messageID) else {
+            throw APIWriteFailure.invalid("That message could not be read.")
+        }
+
+        let summary: PlannerSummaryRequest
+        do {
+            let looksSensitive = contentClassifier.classify(
+                .email(
+                    subject: message.subject, sender: message.sender,
+                    body: message.text, bodyKind: .plainText
+                )
+            ) == .private
+            summary = try PlannerSummaryRequest(from: message, looksSensitive: looksSensitive)
+        } catch PlannerDraftingError.nothingToAnswer {
+            throw APIWriteFailure.invalid("There is no text in that message to summarise.")
+        } catch let error as PlannerDraftingError {
+            throw APIWriteFailure.invalid(APIWriteFailure.message(for: error))
+        }
+
+        do {
+            let result = try await summarizer.summarize(summary)
+            return APIJSON.encode(
+                SummarizeMailResponse(ok: true, summary: result.text, provider: result.provider)
+            )
+        } catch PlannerDraftingError.notSignedIn {
             throw APIWriteFailure.assistantSignedOut
         } catch {
             throw APIWriteFailure.provider(error)

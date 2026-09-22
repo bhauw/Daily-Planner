@@ -34,6 +34,8 @@ struct APIRouter: Sendable {
             return .json(200, "OK", await service.drafts())
         case "/api/tasks":
             return .json(200, "OK", await service.tasks())
+        case "/api/mail/body":
+            return await mailBody(query: request.query)
         default:
             if request.path.hasPrefix("/api/") {
                 return .error(404, "Not Found", .notFound, "No such resource.")
@@ -60,6 +62,8 @@ struct APIRouter: Sendable {
                 payload = try await service.moveEvent(body)
             case .draftReply:
                 payload = try await service.draftReply(body)
+            case .summarizeMail:
+                payload = try await service.summarizeMail(body)
             }
             APIDiagnostics.log.info("\(route.rawValue, privacy: .public) ok")
             return .json(200, "OK", payload)
@@ -74,6 +78,20 @@ struct APIRouter: Sendable {
             )
             return APIWriteFailure.providerUnavailable.response
         }
+    }
+
+    /// One message's body, by `?id=`. A read: nothing here leaves the machine.
+    ///
+    /// Failures say only that the body is unavailable — never whether the id exists, and never
+    /// Google's words.
+    private func mailBody(query: String?) async -> HTTPResponse {
+        guard let id = APIQuery.value(named: "id", in: query), !id.isEmpty, id.utf8.count <= 256 else {
+            return .error(400, "Bad Request", .invalidRequest, "Which message?")
+        }
+        guard service.canReadMailBody else {
+            return .error(404, "Not Found", .notFound, "Message bodies are not available here.")
+        }
+        return await safe("/api/mail/body") { try await service.mailBody(id: id) }
     }
 
     /// Wraps an async producer so a workflow failure becomes a finite, content-free 503 rather
@@ -93,6 +111,20 @@ struct APIRouter: Sendable {
             )
             return .error(503, "Service Unavailable", .unavailable, "Data temporarily unavailable.")
         }
+    }
+}
+
+enum APIQuery {
+    /// The percent-decoded value of one query parameter, or nil. `+` is a space, as a form
+    /// encoder writes it.
+    static func value(named name: String, in query: String?) -> String? {
+        guard let query else { return nil }
+        for pair in query.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2, parts[0] == name[...] else { continue }
+            return String(parts[1]).replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+        }
+        return nil
     }
 }
 
