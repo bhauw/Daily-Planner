@@ -18,6 +18,30 @@ This repository contains disposable M0/M0.5 probes, the approved local-v1 archit
 
 The approved M2A plan authorizes the offline Google read-only foundation. Live Google access remains user-authorized; provider writes, vault-content access, and locked scheduling are not included. M1 remains the preserved offline shell until a live read-only canary is explicitly approved.
 
+## Phase One Status
+
+### Completed
+
+- Established the native macOS application and local web-host architecture.
+- Added deterministic OAuth, Keychain, vault-boundary, and loopback API safety checks.
+- Built the read-only planning shell with synthetic calendar, mail, and task fixtures.
+- Added offline acceptance coverage for the Swift and web layers.
+- Published only sanitized source, tests, synthetic fixtures, and project documentation.
+
+### Partially Finished
+
+- The live read-only provider canary still requires an explicit user-authorized run.
+- Locked-state Keychain behavior remains an interactive verification item.
+- Sandboxed app/helper isolation is deferred to a future architecture pass.
+- Live provider content remains behind the connection boundary and is not used by automated tests.
+
+### Next Steps
+
+1. Complete the user-authorized live read-only canary without recording credentials or provider content.
+2. Promote the read-only shell into the next integration phase with clear loading, error, and connection states.
+3. Revisit sandboxed app/helper isolation after the local-v1 architecture is stable.
+4. Expand public documentation with setup, testing, and contribution guidance using synthetic examples only.
+
 ## Read first
 
 - [M0.5 feasibility handoff](docs/architecture/M0.5-Feasibility-Handoff.md)
