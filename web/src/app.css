@@ -20,6 +20,13 @@
 
 .app__main {
   min-width: 0;
+  /*
+   * A grid item's automatic minimum height is its CONTENT, so without this the main column grew
+   * to fit whatever the surface held and the page itself became taller than the window — every
+   * `overflow: hidden` pane inside then clipped its bottom (the Mail footer, first) instead of
+   * fitting. Zero lets the column be exactly the window, and the surfaces handle their own.
+   */
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -58,7 +65,7 @@
 }
 
 .detached__title {
-  font-size: var(--text-2xl);
+  font-size: var(--title-page);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
 }

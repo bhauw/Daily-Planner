@@ -3,11 +3,12 @@
 }
 
 .colhead__eyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-family: var(--eyebrow-font);
+  font-size: var(--eyebrow-size);
+  font-weight: var(--eyebrow-weight);
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
-  color: var(--text-2);
+  color: var(--eyebrow-color);
   margin-bottom: var(--space-2);
 }
 
@@ -19,7 +20,7 @@
 }
 
 .colhead__title {
-  font-size: var(--text-xl);
+  font-size: var(--title-col);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.01em;
 }

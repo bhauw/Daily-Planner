@@ -10,6 +10,8 @@ import {
   calendarDayURL,
   calendarTemplateURL,
   defaultBlock,
+  draftActions,
+  proposeTaskBlock,
   eventActions,
   gmailSearchURL,
   isExternalWrite,
@@ -165,6 +167,29 @@ describe("no action is ever a dead end", () => {
     expect(senderless.label).toBe("Reply in Gmail");
   });
 
+  it("names the message a reply answers, so the shell can drop it once sent", () => {
+    const reply = replyActions(draft, CAN_WRITE).find((a) => a.id === "reply")!;
+    expect(reply.compose!.answers).toBe(draft.id);
+  });
+
+  // A security alert from no-reply@ got a blue Reply, and the reply went out without a word.
+  it("leads with Find in Gmail for a no-reply sender, and does not make Reply primary", () => {
+    const alert = { ...draft, sender: "no-reply@accounts.example.com" };
+    const actions = replyActions(alert, CAN_WRITE);
+    expect(actions[0].id).toBe("open-gmail");
+    expect(actions[0].primary).toBe(true);
+    expect(actions.find((a) => a.id === "reply")!.primary).toBeFalsy();
+    expect(actions.filter((a) => a.primary)).toHaveLength(1);
+  });
+
+  it("gives a bundle its own actions, never a reply", () => {
+    const bundle: Draft = { id: "b1", title: "Calendar + Task bundle", summary: "Creates a chat.", kind: "bundle" };
+    const actions = draftActions(bundle, CAN_WRITE);
+    expect(actions.map((a) => a.id)).toEqual(["review-bundle", "copy-summary"]);
+    expect(actions[0].unavailable).toBeTruthy();
+    expect(draftActions(draft, CAN_WRITE)).toEqual(replyActions(draft, CAN_WRITE));
+  });
+
   it("schedules in-app with the times already filled in", () => {
     const block = taskActions(task, CAN_WRITE).find((a) => a.id === "schedule-task")!;
     expect(block.schedule).toBeDefined();
@@ -286,5 +311,67 @@ describe("links point where the user expects", () => {
   it("omits copy-address when there is no sender to copy", () => {
     const actions = replyActions({ ...draft, sender: undefined }, CAN_WRITE);
     expect(actions.find((a) => a.id === "copy-sender")).toBeUndefined();
+  });
+});
+
+/*
+ * "Put on the day" for a task due tonight used to seed the block from the DUE time, round it to
+ * the next hour and add one — so 23:59 became 00:00–01:00 the next day, a block booked after the
+ * deadline it was meant to meet. The block now comes from now, from today's free gaps, and ends
+ * before the due.
+ */
+describe("proposeTaskBlock", () => {
+  const day = (hhmm: string) => `2026-09-14T${hhmm}:00-07:00`;
+  const block = (id: string, from: string, to: string): PlannerEvent => ({
+    ...event,
+    id,
+    start: day(from),
+    end: day(to),
+  });
+  const schedule = [
+    block("lecture", "09:00", "10:20"),
+    block("focus", "11:00", "12:00"),
+    block("coffee", "13:30", "14:15"),
+    block("club", "15:00", "16:00"),
+  ];
+  const now = new Date(day("09:30"));
+
+  it("takes the first free hour today, not the hour after the deadline", () => {
+    const { start, end } = proposeTaskBlock(now, new Date(day("23:59")), schedule);
+    expect(start.toISOString()).toBe(new Date(day("12:00")).toISOString());
+    expect(end.toISOString()).toBe(new Date(day("13:00")).toISOString());
+  });
+
+  it("settles for a shorter gap when that is all there is before the due", () => {
+    const { start, end } = proposeTaskBlock(now, new Date(day("10:50")), schedule);
+    expect(start.toISOString()).toBe(new Date(day("10:20")).toISOString());
+    expect(end.toISOString()).toBe(new Date(day("10:50")).toISOString());
+  });
+
+  it("never ends after the due, even when no gap is free", () => {
+    const busy = [block("all-day", "09:00", "23:00")];
+    const due = new Date(day("12:00"));
+    const { start, end } = proposeTaskBlock(now, due, busy);
+    expect(end.getTime()).toBeLessThanOrEqual(due.getTime());
+    expect(start.getTime()).toBeGreaterThanOrEqual(now.getTime());
+  });
+
+  it("still finds today's first free hour for a task already overdue", () => {
+    // Nothing can end before a due that has passed, so the soonest honest slot is the answer.
+    const { start } = proposeTaskBlock(now, new Date(day("08:00")), schedule);
+    expect(start.toISOString()).toBe(new Date(day("12:00")).toISOString());
+  });
+
+  it("ignores events on other days when finding today's gaps", () => {
+    const tomorrow = { ...block("x", "12:00", "13:00"), start: "2026-09-15T12:00:00-07:00", end: "2026-09-15T13:00:00-07:00" };
+    const { start } = proposeTaskBlock(now, new Date("2026-09-16T12:00:00-07:00"), [...schedule, tomorrow]);
+    expect(start.toISOString()).toBe(new Date(day("12:00")).toISOString());
+  });
+
+  it("is what Put on the day prefills when the surface hands over the day", () => {
+    const due: TaskItem = { ...task, due: day("23:59") };
+    const action = taskActions(due, CAN_WRITE, { now, schedule }).find((a) => a.id === "schedule-task")!;
+    expect(new Date(action.schedule!.start).toISOString()).toBe(new Date(day("12:00")).toISOString());
+    expect(new Date(action.schedule!.end).getTime()).toBeLessThanOrEqual(new Date(day("23:59")).getTime());
   });
 });

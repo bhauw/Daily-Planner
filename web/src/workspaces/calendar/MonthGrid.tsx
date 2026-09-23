@@ -17,8 +17,8 @@
 import { useMemo } from "react";
 import type { PlannerEvent } from "../contract";
 import { presentationFor } from "../contract";
-import { addDays, partsOfKey, weekdayShort, dayKey } from "./tz";
-import { eventInterval } from "./scheduling";
+import { addDays, partsOfKey, weekdayShort } from "./tz";
+import { intervalOnDay } from "./scheduling";
 
 interface MonthGridProps {
   anchor: string;
@@ -58,11 +58,11 @@ interface DayCell {
   segments: Segment[];
 }
 
-function segmentsFor(events: PlannerEvent[]): { segments: Segment[]; committed: number; count: number } {
+function segmentsFor(events: PlannerEvent[], key: string): { segments: Segment[]; committed: number; count: number } {
   const byColor = new Map<string, Segment & { rank: number }>();
   let committed = 0;
   for (const e of events) {
-    const iv = eventInterval(e);
+    const iv = intervalOnDay(e, key);
     const mins = iv ? Math.max(20, iv.end - iv.start) : 20;
     committed += mins;
     const p = presentationFor(e);
@@ -89,16 +89,12 @@ export function MonthGrid({ anchor, planning, todayKey, onPickDay }: MonthGridPr
   const cells = useMemo<DayCell[]>(() => {
     const pad = WEEKDAY_INDEX.indexOf(weekdayShort(new Date(`${first}T12:00:00Z`).toISOString()));
     const gridStart = addDays(first, -(pad < 0 ? 0 : pad));
-    const byDay = new Map<string, PlannerEvent[]>();
-    for (const e of planning) {
-      const k = dayKey(e.start);
-      const arr = byDay.get(k);
-      if (arr) arr.push(e);
-      else byDay.set(k, [e]);
-    }
     return Array.from({ length: 42 }, (_, i) => {
       const key = addDays(gridStart, i);
-      const { segments, committed, count } = segmentsFor(byDay.get(key) ?? []);
+      // Every event that touches the day, counted for its part on that day — a red-eye that
+      // lands Wednesday morning is on Wednesday too.
+      const onDay = planning.filter((e) => intervalOnDay(e, key) != null);
+      const { segments, committed, count } = segmentsFor(onDay, key);
       return { key, inMonth: partsOfKey(key).m === m, count, committed, segments };
     });
   }, [first, m, planning]);

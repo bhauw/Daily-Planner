@@ -177,6 +177,35 @@ export function placementFor(gap: Gap): Placement {
   };
 }
 
+/**
+ * Where the keyboard "Block time" path opens: the first gap that holds a full
+ * preferred block, else the first that holds any block at all (on what it can
+ * hold). A fixed default time was the old answer, and on the mock day it sat
+ * exactly on the existing focus block — the form proposed a double-booking
+ * without a word. Null when the day has no room.
+ */
+export function firstOpening(gaps: Gap[]): { startMin: number; durationMin: number } | null {
+  const full = gaps.find((g) => gapFits(g, PREFERRED_BLOCK_MIN));
+  if (full) return { startMin: full.startMin, durationMin: PREFERRED_BLOCK_MIN };
+  const any = gaps.find((g) => gapFits(g, MIN_BLOCK_MIN));
+  return any ? { startMin: any.startMin, durationMin: any.endMin - any.startMin } : null;
+}
+
+/**
+ * The first block that [startMin, endMin) overlaps, or null. Touching edges do
+ * not count — 10:20 straight after a lecture ending at 10:20 is free time.
+ */
+export function overlapFor(events: PlannerEvent[], startMin: number, endMin: number): PlannerEvent | null {
+  for (const e of events) {
+    const s = minutesOfDay(e.start);
+    if (s == null) continue;
+    const rawEnd = minutesOfDay(e.end);
+    const en = rawEnd != null && rawEnd > s ? rawEnd : s + MIN_BLOCK_MIN;
+    if (startMin < en && endMin > s) return e;
+  }
+  return null;
+}
+
 /** "09:30" — a wall-clock label for a minutes-from-midnight value. */
 export function clock(minutes: number): string {
   const h = Math.floor(minutes / 60)

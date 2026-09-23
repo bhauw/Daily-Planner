@@ -40,3 +40,34 @@
   font-size: var(--text-xs);
   color: var(--text-2);
 }
+
+/*
+ * Compact: one row in a ~230px card. Ghost secondaries with trimmed padding, a tighter gap, and
+ * the rule above dropped (the card border already separates it). It can still wrap — a longer
+ * label ("Reply in Gmail") must never be clipped — but the default set fits on one line.
+ */
+.actionbar--compact {
+  gap: var(--space-1);
+  margin-top: var(--space-4);
+  padding-top: 0;
+  border-top: none;
+}
+.actionbar--compact .btn--sm {
+  padding: var(--space-2) var(--space-4);
+}
+/* A ghost has no box to pad out, so its text can sit closer to its neighbours. */
+.actionbar--compact .btn--ghost {
+  padding-inline: var(--space-3);
+}
+.actionbar--compact .btn--ghost {
+  color: var(--text-2);
+}
+.actionbar--compact .btn--ghost:hover {
+  color: var(--text);
+}
+.actionbar--compact .actionbar__slot + .actionbar__slot {
+  margin-left: var(--space-1);
+}
+.actionbar--compact .actionbar__note {
+  margin-top: var(--space-1);
+}

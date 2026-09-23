@@ -1,0 +1,638 @@
+/*
+ * Plan my day. Two panes: the step on the left as a reading column, and the day on the right,
+ * because "does it fit?" is answered by looking at the day while you choose — not after.
+ */
+
+.plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  height: 100%;
+  min-height: 0;
+}
+
+.plan__main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.plan__head {
+  flex: 0 0 auto;
+  padding: var(--space-12) var(--space-12) var(--space-8);
+  border-bottom: var(--hairline);
+}
+
+.plan__title {
+  margin-top: var(--space-3);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.015em;
+  line-height: var(--leading-tight);
+}
+
+/* ----- Stepper ----- */
+
+.plan__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+  list-style: none;
+  padding: 0;
+}
+
+.plan__stepbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 32px;
+  padding: var(--space-3) var(--space-6) var(--space-3) var(--space-3);
+  border-radius: 999px;
+  border: var(--hairline-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.plan__stepbtn:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.plan__stepbtn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.plan__stepbtn.is-on {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.plan__stepnum {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: var(--text-2xs);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.plan__stepbtn.is-on .plan__stepnum {
+  background: var(--accent-fill);
+  color: var(--accent-fill-ink);
+}
+
+.plan__stepbtn.is-past .plan__stepnum {
+  color: var(--text);
+}
+
+/* ----- Body ----- */
+
+.plan__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-10) var(--space-12);
+  max-width: 760px;
+  width: 100%;
+}
+
+.plan__steptitle {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.plan__steptitle:focus {
+  outline: none;
+}
+.plan__steptitle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.plan__lede {
+  margin-top: var(--space-4);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text-2);
+  max-width: 62ch;
+}
+
+.plan__callout {
+  margin-top: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text);
+  background: var(--surface);
+  border: var(--hairline-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  max-width: 62ch;
+}
+
+.plan__callout:focus {
+  outline: none;
+}
+
+.plan__callout--tight {
+  border-left-color: var(--warn);
+}
+
+.plan__callout--over {
+  border-left-color: var(--danger);
+}
+
+.plan__foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-12);
+  border-top: var(--hairline);
+  max-width: 760px;
+  width: 100%;
+}
+
+.plan__spacer {
+  flex: 1 1 auto;
+}
+
+/* ----- Day pane ----- */
+
+.plan__day {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: var(--hairline);
+  background: var(--chrome);
+}
+
+.plan__dayhead {
+  padding: var(--space-12) var(--space-8) var(--space-8);
+  border-bottom: var(--hairline);
+}
+
+.plan__dayline {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: var(--space-4);
+}
+
+/* Proposed blocks are dashed until written: what is on screen is not yet on the calendar. */
+.plan__dayline [data-event-id^="plan-"] .blk {
+  border-style: dashed;
+  border-left-style: solid;
+  border-width: 1px 1px 1px 3px;
+  background: transparent;
+}
+
+.plan__dayline [data-event-id^="plan-"] .blk__title {
+  color: var(--text-2);
+}
+
+/* ----- Meter ----- */
+
+.fitmeter {
+  margin-top: var(--space-4);
+}
+
+.fitmeter__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.fitmeter__word {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.fitmeter--tight .fitmeter__word {
+  color: var(--warn);
+}
+
+.fitmeter--over .fitmeter__word,
+.fitmeter--full .fitmeter__word {
+  color: var(--danger);
+}
+
+.fitmeter__text {
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  text-align: right;
+}
+
+.fitmeter__track {
+  display: block;
+  margin-top: var(--space-4);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.fitmeter__fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width var(--motion-base) var(--ease-standard);
+}
+
+.fitmeter--tight .fitmeter__fill {
+  background: var(--warn);
+}
+
+.fitmeter--over .fitmeter__fill,
+.fitmeter--full .fitmeter__fill {
+  background: var(--danger);
+}
+
+/* ----- Step 1: must-reads ----- */
+
+.mustreads {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.mustread {
+  padding: var(--space-6) var(--space-8);
+  background: var(--surface);
+  border: var(--hairline-strong);
+  border-left: 3px solid var(--mr-accent, var(--border));
+  border-radius: var(--radius-md);
+}
+
+.mustread__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+
+.mustread__badge {
+  flex: 0 0 auto;
+  padding: 1px var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+}
+
+.mustread__title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.mustread__meta {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+.mustread__summary {
+  margin-top: var(--space-4);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+}
+
+.mustread__provider {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.mustread__error {
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--warn);
+}
+
+.mustread__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+/* The mail workspace's BookIt, styled here too: its rules live in mail.css, which this surface
+   does not load. Same values, so a found date looks the same in both places. */
+.mustread .bookit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.mustread .bookit__label {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.mustread .bookit__options {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* ----- Step 2: picking ----- */
+
+.pickgroup {
+  margin-top: var(--space-10);
+}
+
+.pickgroup__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.pickgroup__count {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.pickgroup__list {
+  list-style: none;
+  padding: 0;
+}
+
+.pickrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border-top: var(--hairline);
+}
+
+.pickrow:last-child {
+  border-bottom: var(--hairline);
+}
+
+.pickrow.is-picked {
+  background: var(--surface);
+}
+
+.pickrow__label {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  min-height: var(--touch-min);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.pickrow__check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-fill);
+  flex: 0 0 auto;
+}
+
+.pickrow__chip {
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  flex: 0 0 3px;
+}
+
+.pickrow__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pickrow__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.pickrow__meta {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.sizes {
+  display: inline-flex;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.sizes__chip {
+  min-width: 48px;
+  min-height: 28px;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: var(--hairline-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.sizes__chip:hover {
+  color: var(--text);
+}
+
+.sizes__chip.is-on {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.addblock {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-6);
+  margin-top: var(--space-10);
+  max-width: 520px;
+}
+
+.addblock__field {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.addblock__label {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.addblock__input {
+  min-height: 32px;
+  padding: var(--space-3) var(--space-5);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--surface-2);
+  border: var(--hairline-strong);
+  border-radius: var(--radius-md);
+}
+
+.addblock__input::placeholder {
+  color: var(--text-2);
+}
+
+/* ----- Step 3: the fit ----- */
+
+.fitlist {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-8);
+}
+
+.fitrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
+  padding: var(--space-4);
+  border-top: var(--hairline);
+}
+
+.fitrow:last-child {
+  border-bottom: var(--hairline);
+}
+
+.fitrow.is-over {
+  background: var(--surface);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.fitrow__rank {
+  width: 20px;
+  text-align: right;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.fitrow__body {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fitrow__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.fitrow__when {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.fitrow__when.is-over {
+  color: var(--danger);
+  font-weight: var(--weight-semibold);
+}
+
+.fitrow__order {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+/* ----- Step 4: review ----- */
+
+.review {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-8);
+}
+
+.reviewrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+  padding: var(--space-5) var(--space-4);
+  border-top: var(--hairline);
+}
+
+.reviewrow:last-child {
+  border-bottom: var(--hairline);
+}
+
+.reviewrow__time {
+  width: 92px;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.reviewrow__body {
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.reviewrow__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.reviewrow__meta {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.reviewrow__why {
+  font-size: var(--text-sm);
+  color: var(--warn);
+  line-height: var(--leading-normal);
+}
+
+.reviewrow__state {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-2);
+}
+
+.reviewrow__state.is-created {
+  color: var(--cat-extracurricular);
+}
+
+.reviewrow__state.is-failed {
+  color: var(--danger);
+}
+
+.plan__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+  margin-top: var(--space-10);
+}
+
+.plan__confirmnote {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}

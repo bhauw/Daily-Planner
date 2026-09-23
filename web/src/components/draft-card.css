@@ -4,6 +4,29 @@
   border-radius: var(--radius-lg);
   padding: var(--card-pad);
   margin-top: var(--space-5);
+  /* A draft arriving is the app's signature moment; it eases in rather than popping. The
+     reduced-motion rule in base.css collapses this to an instant change. */
+  animation: dp-enter var(--motion-slow) var(--ease-out-expo) both;
+}
+
+/*
+ * One primary per column. Every card used to carry its own filled blue "Reply", so Today had six
+ * equal-weight primaries stacked in the assistant column and no single next action. Only the
+ * lead card keeps the fill; the rest render their primary as a secondary button with accent ink
+ * (--accent-text on --surface-2 = 4.88:1). A variant class, so the action row itself is untouched.
+ */
+.draftcard--quiet .btn--primary:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--accent-text);
+}
+.draftcard--quiet .btn--primary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+.draftcard--quiet .btn--primary:active:not(:disabled) {
+  background: var(--surface-pressed);
+  border-color: var(--border);
 }
 
 .draftcard__title {
@@ -21,5 +44,4 @@
 .draftcard__actions {
   display: flex;
   gap: var(--space-3);
-  margin-top: var(--space-4);
 }

@@ -31,14 +31,7 @@ import type {
 } from "../api/client";
 import { WriteDeskProvider, useWriteDesk } from "./WriteDesk";
 
-const capability = {
-  canSend: true,
-  canSchedule: true,
-  canReschedule: true,
-  canDraft: false,
-  canReadBody: false,
-  canSummarize: false,
-};
+const capability = { canSend: true, canSchedule: true, canReschedule: true, canDraft: false, canReadBody: false, canSummarize: false };
 
 const client = {
   sendMail: async (_request: SendMailRequest): Promise<SendMailResponse> => {
@@ -198,6 +191,68 @@ describe("WriteDesk focus containment", () => {
 
     expect(panel!.contains(document.activeElement)).toBe(true);
 
+    cleanup(m);
+  });
+});
+
+/*
+ * Esc, Cancel or a backdrop click threw a half-written reply away without a word — reopening it
+ * showed an empty body. A reply that has been typed into now asks first, inside the panel (a
+ * `window.confirm` in WKWebView needs a UI delegate and can return false without showing).
+ */
+describe("WriteDesk does not silently discard a written reply", () => {
+  async function type(m: Mounted, text: string) {
+    const area = m.host.querySelector<HTMLTextAreaElement>("textarea")!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(area, text);
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  const escape = () =>
+    act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+  const press = async (m: Mounted, label: string) => {
+    const b = Array.from(m.host.querySelectorAll("button")).find((x) => x.textContent?.trim() === label);
+    if (!b) throw new Error(`no ${label}`);
+    await act(async () => b.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+  };
+
+  it("asks before Escape discards an edited body, and keeps it on Keep writing", async () => {
+    const m = await mount();
+    await openDesk(m);
+    await type(m, "Hi. Thursday works, and");
+
+    await escape();
+    expect(m.panel()).not.toBeNull();
+    expect(m.host.textContent).toMatch(/discard this reply/i);
+
+    await press(m, "Keep writing");
+    expect(m.panel()).not.toBeNull();
+    expect(m.host.querySelector("textarea")!.value).toBe("Hi. Thursday works, and");
+
+    await escape();
+    await press(m, "Discard");
+    expect(m.panel()).toBeNull();
+    cleanup(m);
+  });
+
+  it("asks on Cancel too", async () => {
+    const m = await mount();
+    await openDesk(m);
+    await type(m, "Half a thought");
+    await press(m, "Cancel");
+    expect(m.panel()).not.toBeNull();
+    expect(m.host.textContent).toMatch(/discard this reply/i);
+    cleanup(m);
+  });
+
+  it("closes straight away when nothing was changed", async () => {
+    const m = await mount();
+    await openDesk(m);
+    await press(m, "Cancel");
+    expect(m.panel()).toBeNull();
     cleanup(m);
   });
 });

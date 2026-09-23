@@ -14,6 +14,7 @@
  */
 
 import type { Category, Draft } from "../contract";
+import { waitingOn } from "../../surfaces/mailTriage";
 
 /** A recipient address, shown in full — never truncated into ambiguity. */
 export interface Recipient {
@@ -41,6 +42,24 @@ export function isSendAction(kind: Draft["kind"]): boolean {
   return kind === "reply";
 }
 
+/**
+ * Whether a reply is plausibly owed. "Reply needed" and the send warning were on every reply-kind
+ * row — a no-reply security alert, a bank statement and a registrar note that says "No action
+ * needed" included — which taught him to ignore the one warning that matters.
+ *
+ * A real thread defers to `waitingOn`, the rule Digest already uses (no-reply senders, security
+ * alerts and statements owe nothing), plus the email saying so itself. A synthetic reply draft
+ * was written to be sent, so it does.
+ */
+export function replyExpected(draft: Draft): boolean {
+  if (!isSendAction(draft.kind)) return false;
+  if (!draft.sender) return true;
+  if (waitingOn(draft) !== "Your reply") return false;
+  return !/\b(no (action|reply|response) (is )?(needed|required)|do not reply|don'?t reply)\b/i.test(
+    `${draft.title}\n${draft.summary}`,
+  );
+}
+
 export interface DraftDetail {
   /**
    * True when this row is a REAL inbox thread surfaced for triage rather than a proposed
@@ -48,6 +67,8 @@ export interface DraftDetail {
    * body — see the notice in DraftEditor. Draft generation arrives in a later milestone.
    */
   isTriage: boolean;
+  /** See `replyExpected`. Drives "Reply needed" and the send warning. */
+  replyExpected: boolean;
   /** The thread's own snippet, shown read-only. Never treated as a draft body. */
   snippet: string;
   /** category for the thread chip — Draft on the wire has none this round. */
@@ -63,7 +84,7 @@ export interface DraftDetail {
   context: ContextUsedData;
 }
 
-const DETAIL: Record<string, DraftDetail> = {
+const DETAIL: Record<string, Omit<DraftDetail, "replyExpected">> = {
   d1: {
     isTriage: false,
     snippet: "",
@@ -141,7 +162,7 @@ const DETAIL: Record<string, DraftDetail> = {
  */
 export function detailFor(draft: Draft): DraftDetail {
   const known = DETAIL[draft.id];
-  if (known) return known;
+  if (known) return { ...known, replyExpected: replyExpected(draft) };
 
   // A real inbox thread (it carries a sender). This round is triage only: show the thread and
   // say plainly that no reply exists yet. Putting the snippet in `body` would dress a received
@@ -149,6 +170,7 @@ export function detailFor(draft: Draft): DraftDetail {
   const isTriage = typeof draft.sender === "string" && draft.sender.length > 0;
   return {
     isTriage,
+    replyExpected: replyExpected(draft),
     snippet: isTriage ? draft.summary : "",
     category: draft.category ?? "other",
     subject: draft.title,

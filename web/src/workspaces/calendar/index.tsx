@@ -14,7 +14,7 @@
 import { useMemo, useState } from "react";
 import type { WorkspaceProps, PlannerEvent } from "../contract";
 import { useAsync, EmptyState, ConnectionState, Button } from "../contract";
-import { addDays, weekdayShort, partsOfKey, minutesOfDay, zoneAbbrev } from "./tz";
+import { addDays, weekdayShort, partsOfKey, minutesOfDay, zoneAbbrev, isoAtVan } from "./tz";
 import {
   buildCalendarStates,
   planningEvents as planningOnly,
@@ -23,7 +23,7 @@ import {
   type CalendarState,
 } from "./roles";
 import { busyForDay, eventInterval, fmtMinutes } from "./scheduling";
-import { proposalFor, type Proposal } from "./proposals";
+import { applyAccepted, proposalFor, whenLabel, type Proposal } from "./proposals";
 import { WeekGrid } from "./WeekGrid";
 import { MonthGrid } from "./MonthGrid";
 import { DaylineDetail } from "./DaylineDetail";
@@ -114,7 +114,17 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
   // which put things that are not appointments — a recruiter's email, "Midterm 2 review
   // posted" — onto the grid as timed blocks, crowding the real day with items that have no
   // duration and cannot be attended.
-  const events = useMemo<PlannerEvent[]>(() => weekEvents, [weekEvents]);
+  //
+  // Accepted reschedules are applied here, once, so every view — Week, Day, Month and
+  // Availability — draws the block where it was approved to rather than where it came from.
+  const [accepted, setAccepted] = useState<Map<string, Proposal>>(new Map());
+  const events = useMemo<PlannerEvent[]>(
+    () => weekEvents.map((e) => {
+      const p = accepted.get(e.id);
+      return p ? applyAccepted(e, p) : e;
+    }),
+    [weekEvents, accepted],
+  );
 
   // Fail-closed calendar roles: only `planning` calendars count anywhere.
   const [states, setStates] = useState<CalendarState[]>(() => buildCalendarStates(calendarSummaries, events));
@@ -125,10 +135,17 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
   const [anchor, setAnchor] = useState<string>(activeDay);
   const [showExcluded, setShowExcluded] = useState(false);
   const [proposals, setProposals] = useState<Map<string, Proposal>>(new Map());
-  const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string>("");
 
   const nowMinutes = minutesOfDay(new Date().toISOString());
+  // "Now" on the planning day, the same reading the Week grid's now-line uses: the engine's
+  // active day with the wall clock's time. Availability never offers a slot before it.
+  const nowOnDay = useMemo(() => {
+    const { y, m, d } = partsOfKey(activeDay);
+    return new Date(isoAtVan(y, m, d, Math.floor(nowMinutes / 60), nowMinutes % 60));
+    // Once per day change: re-reading the clock each render would reshuffle the ranking.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDay]);
   const week = useMemo(() => {
     const start = weekStart(anchor);
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
@@ -145,22 +162,22 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
     const busy = busyForDay(planning, dayKey);
     const p = proposalFor(event, dayKey, iv.start, toStart, duration, busy);
     setProposals((m) => new Map(m).set(event.id, p));
-    setAccepted((s) => {
-      if (!s.has(event.id)) return s;
-      const n = new Set(s);
-      n.delete(event.id);
-      return n;
-    });
+    // The day is named whenever it changes: "to 14:00" after a drag into Wednesday reads as
+    // the same day and hides the part of the move that matters most.
+    const to = p.dayKey === p.fromDayKey ? fmtMinutes(toStart) : whenLabel(p.dayKey, toStart);
+    // The collision text keeps its case — lowercasing it turned "ECONOMICS 250 Lecture" into
+    // "bus 251 lecture".
     announce(
       p.collision
-        ? `Proposed ${event.title} to ${fmtMinutes(toStart)}, but it ${p.collision.toLowerCase()}. This is a proposal — nothing was sent.`
-        : `Proposed ${event.title} to ${fmtMinutes(toStart)}. This needs approval — nothing was sent.`,
+        ? `Proposed ${event.title} to ${to} — ${p.collision}. This is a proposal — nothing was sent.`
+        : `Proposed ${event.title} to ${to}. This needs approval — nothing was sent.`,
     );
   }
 
   function onApprove(id: string) {
     const p = proposals.get(id);
-    setAccepted((s) => new Set(s).add(id));
+    // Keep the proposal itself, not just the id: the day and time ARE what was approved.
+    if (p) setAccepted((m) => new Map(m).set(id, p));
     setProposals((m) => {
       const n = new Map(m);
       n.delete(id);
@@ -168,7 +185,7 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
     });
     announce(
       p
-        ? `Accepted ${p.event.title} locally at ${fmtMinutes(p.toStart)}. No external write was made — this round is read-only.`
+        ? `Accepted ${p.event.title} locally at ${whenLabel(p.dayKey, p.toStart)}. No external write was made — this round is read-only.`
         : "Accepted locally. No external write was made.",
     );
   }
@@ -258,7 +275,12 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
           <span className="cal__spring" />
 
           <label className="excluded-toggle">
-            <input type="checkbox" checked={showExcluded} onChange={(e) => setShowExcluded(e.target.checked)} />
+            <input
+              className="excluded-toggle__box"
+              type="checkbox"
+              checked={showExcluded}
+              onChange={(e) => setShowExcluded(e.target.checked)}
+            />
             Show excluded reference calendars
           </label>
         </div>
@@ -284,6 +306,8 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
             nowMinutes={nowMinutes}
             proposals={proposals}
             onPropose={onPropose}
+            onApprove={onApprove}
+            onDiscard={onDiscard}
             onExplainFixed={onExplainFixed}
             onExplainExcluded={onExplainExcluded}
           />
@@ -309,7 +333,7 @@ function CalendarBody({ weekEvents, calendarSummaries, day: activeDay, detached 
           />
         )}
         {view === "availability" && (
-          <AvailabilityFinder fromKey={anchor} planning={planning} allEvents={events} states={states} />
+          <AvailabilityFinder fromKey={anchor} planning={planning} allEvents={events} states={states} now={nowOnDay} />
         )}
       </div>
     </div>

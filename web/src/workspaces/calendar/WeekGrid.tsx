@@ -10,11 +10,11 @@
 
 import { useRef, useState } from "react";
 import type { PlannerEvent } from "../contract";
-import { presentationFor, formatTime } from "../contract";
+import { presentationFor, formatTime, formatLongDay, Button } from "../contract";
 import { weekdayShort, isWeekend } from "./tz";
-import { isFlexible, eventInterval, STEP } from "./scheduling";
+import { isFlexible, eventInterval, intervalOnDay, STEP } from "./scheduling";
 import type { Role } from "./roles";
-import type { Proposal } from "./proposals";
+import { whenLabel, type Proposal } from "./proposals";
 import { layoutColumns, blockGeometry, WINDOW_START, WINDOW_END, PX_PER_MIN, HOUR_PX } from "./layout";
 import { fmtMinutes } from "./scheduling";
 
@@ -27,6 +27,9 @@ interface WeekGridProps {
   nowMinutes: number;
   proposals: Map<string, Proposal>;
   onPropose: (event: PlannerEvent, dayKey: string, toStart: number) => void;
+  /** Approve/discard straight from the ghost — proposing here and approving in Day was a round trip. */
+  onApprove: (id: string) => void;
+  onDiscard: (id: string) => void;
   onExplainFixed: (event: PlannerEvent) => void;
   onExplainExcluded: (event: PlannerEvent) => void;
 }
@@ -50,6 +53,8 @@ export function WeekGrid({
   nowMinutes,
   proposals,
   onPropose,
+  onApprove,
+  onDiscard,
   onExplainFixed,
   onExplainExcluded,
 }: WeekGridProps) {
@@ -109,9 +114,12 @@ export function WeekGrid({
 
         {weekDays.map((key) => {
           const instant = new Date(`${key}T12:00:00Z`).toISOString();
-          const dayEvents = events.filter((e) => e.start.startsWith(key) || dayKeyMatch(e, key));
+          // The Vancouver calendar day of the instant, not the ISO string's prefix — a UTC "Z"
+          // string after 17:00 PDT carries the NEXT day's date.
+          // Every day an event touches, not only its start day: an overnight shift is on both.
+          const dayEvents = events.filter((e) => intervalOnDay(e, key) != null);
           const visible = dayEvents.filter((e) => roleOf(e) === "planning" || showExcluded);
-          const positioned = layoutColumns(visible);
+          const positioned = layoutColumns(visible, key);
           const showNow = key === todayKey && nowMinutes >= WINDOW_START && nowMinutes <= WINDOW_END;
 
           return (
@@ -170,11 +178,14 @@ export function WeekGrid({
                 ]
                   .filter(Boolean)
                   .join(" ");
+                // The day is in the name: five "ECONOMICS 250 Lecture, 09:00" in a row told a screen
+                // reader nothing about which column it was in.
+                const when = `${formatLongDay(ev.start)} ${formatTime(ev.start)}`;
                 const label = excluded
-                  ? `${ev.title}, ${p.label}, excluded calendar, not counted`
+                  ? `${ev.title}, ${p.label}, ${when}, excluded calendar, not counted`
                   : flex
-                    ? `${ev.title}, ${p.label}, ${formatTime(ev.start)}, flexible — arrow keys move it`
-                    : `${ev.title}, ${p.label}, ${formatTime(ev.start)}, fixed`;
+                    ? `${ev.title}, ${p.label}, ${when}, flexible — arrow keys move it`
+                    : `${ev.title}, ${p.label}, ${when}, fixed`;
                 return (
                   <button
                     type="button"
@@ -227,16 +238,26 @@ export function WeekGrid({
                 .map((pr) => {
                   const top = (pr.toStart - WINDOW_START) * PX_PER_MIN;
                   const height = Math.max(20, pr.duration * PX_PER_MIN);
+                  const to = whenLabel(pr.dayKey, pr.toStart);
+                  const from = whenLabel(pr.fromDayKey, pr.fromStart);
                   return (
                     <div
                       key={`ghost-${pr.event.id}`}
                       className="cal-blk cal-blk--proposed"
                       style={{ top, height, left: "var(--space-2)", right: "var(--space-2)", width: "auto" }}
-                      aria-hidden="true"
+                      role="group"
+                      aria-label={`Proposed: ${pr.event.title}, ${from} to ${to}, needs approval`}
                     >
-                      <span className="num cal-blk__time">{fmtMinutes(pr.toStart)}</span>
+                      <span className="num cal-blk__time">{pr.dayKey === pr.fromDayKey ? fmtMinutes(pr.toStart) : to}</span>
                       <span className="cal-blk__title">Proposed · {pr.event.title}</span>
-                      <span className="cal-blk__badge">needs approval</span>
+                      <span className="cal-blk__ghostactions">
+                        <Button variant="primary" size="sm" onClick={() => onApprove(pr.event.id)}>
+                          Approve
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => onDiscard(pr.event.id)}>
+                          Discard
+                        </Button>
+                      </span>
                     </div>
                   );
                 })}
@@ -252,8 +273,3 @@ export function WeekGrid({
   );
 }
 
-function dayKeyMatch(e: PlannerEvent, key: string): boolean {
-  // Robust day match in Vancouver even if the ISO offset differs from the key.
-  const iso = e.start;
-  return iso.slice(0, 10) === key;
-}

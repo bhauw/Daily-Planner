@@ -18,7 +18,7 @@ import { useMemo } from "react";
 import type { Draft, Preview, TasksResponse } from "../api/client";
 import { formatRange, formatTime } from "../lib/format";
 import { EmptyState } from "../components/Column";
-import { groupByRank, rankFocus, type FocusItem, type FocusKind } from "./priority";
+import { focusEvents, groupByRank, rankFocus, type FocusItem, type FocusKind } from "./priority";
 import { ActionBar } from "./ActionBar";
 import {
   NO_WRITES,
@@ -26,6 +26,7 @@ import {
   replyActions,
   taskActions,
   type ActionCapability,
+  type DayContext,
   type ItemAction,
 } from "./actions";
 import "./focus.css";
@@ -47,26 +48,29 @@ interface FocusProps {
 }
 
 /** The actions that fit whatever this row was built from. */
-function actionsFor(item: FocusItem, capability: ActionCapability): ItemAction[] {
+function actionsFor(item: FocusItem, capability: ActionCapability, day: DayContext): ItemAction[] {
   switch (item.source.kind) {
     case "event":
-      return eventActions(item.source.event, capability);
+      // The day's schedule rides along so "Move it" can name what a new time would sit on.
+      return eventActions(item.source.event, capability, day.schedule);
     case "task":
-      return taskActions(item.source.task, capability);
+      return taskActions(item.source.task, capability, day);
     case "reply":
       return replyActions(item.source.draft, capability);
   }
 }
 
 export function Focus({ preview, tasks, drafts, capability = NO_WRITES, now }: FocusProps) {
-  // The queue and the schedule are the same events in two orders, so taking the
-  // schedule alone avoids ranking everything twice.
+  // The queue AND the schedule: they are not the same events in two orders, and ranking the
+  // schedule alone left every Priority-queue item off the surface meant to say what is next.
   const items = useMemo(
-    () => rankFocus({ events: preview.schedule, lists: tasks.lists, drafts, now: now ?? new Date() }),
-    [preview.schedule, tasks.lists, drafts, now],
+    () => rankFocus({ events: focusEvents(preview), lists: tasks.lists, drafts, now: now ?? new Date() }),
+    [preview, tasks.lists, drafts, now],
   );
 
   const groups = useMemo(() => groupByRank(items), [items]);
+  // Today's blocks, so "Put on the day" proposes a gap that is actually free.
+  const day = useMemo<DayContext>(() => ({ now, schedule: preview.schedule }), [now, preview.schedule]);
 
   if (items.length === 0) {
     return (
@@ -87,7 +91,7 @@ export function Focus({ preview, tasks, drafts, capability = NO_WRITES, now }: F
   return (
     <div className="focus">
       <div className="focus__scroll">
-        <LeadCard item={lead} capability={capability} />
+        <LeadCard item={lead} capability={capability} day={day} />
 
         {rest.length > 0 && (
           <div className="focus__rest">
@@ -97,11 +101,11 @@ export function Focus({ preview, tasks, drafts, capability = NO_WRITES, now }: F
                   <span className="colhead__eyebrow">{group.label}</span>
                   <span className="num focus__groupcount">{group.items.length}</span>
                 </div>
-                <div role="list">
+                <ul className="focus__list">
                   {group.items.map((item) => (
-                    <FocusRow key={`${item.kind}-${item.id}`} item={item} capability={capability} />
+                    <FocusRow key={`${item.kind}-${item.id}`} item={item} capability={capability} day={day} />
                   ))}
-                </div>
+                </ul>
               </section>
             ))}
           </div>
@@ -111,7 +115,13 @@ export function Focus({ preview, tasks, drafts, capability = NO_WRITES, now }: F
   );
 }
 
-function LeadCard({ item, capability }: { item: FocusItem; capability: ActionCapability }) {
+interface RowProps {
+  item: FocusItem;
+  capability: ActionCapability;
+  day: DayContext;
+}
+
+function LeadCard({ item, capability, day }: RowProps) {
   const color = item.colorVar;
   const time =
     item.kind === "event" && item.until ? formatRange(item.at ?? "", item.until) : formatTime(item.at);
@@ -119,6 +129,9 @@ function LeadCard({ item, capability }: { item: FocusItem; capability: ActionCap
   return (
     <article
       className="lead"
+      // A key scope for its action bar's shortcuts — see ActionBar.
+      data-keyscope
+      tabIndex={-1}
       aria-label={`Do next: ${item.title}, ${item.reason}`}
       style={{ ["--lead-accent" as string]: color }}
     >
@@ -132,49 +145,51 @@ function LeadCard({ item, capability }: { item: FocusItem; capability: ActionCap
         {time && <span className="num lead__time">{time}</span>}
       </div>
       {item.detail && <div className="lead__detail">{item.detail}</div>}
-      <ActionBar actions={actionsFor(item, capability)} subject={item.title} />
+      <ActionBar actions={actionsFor(item, capability, day)} subject={item.title} />
     </article>
   );
 }
 
-function FocusRow({ item, capability }: { item: FocusItem; capability: ActionCapability }) {
+function FocusRow({ item, capability, day }: RowProps) {
   const color = item.colorVar;
   const time = formatTime(item.at);
 
   return (
-    <details className="focus__row" role="listitem">
-      <summary
-        className="focus__summary"
-        aria-label={`${item.title}, ${item.reason}. Press to show actions.`}
-      >
-        <span className="item__chip" style={{ background: color }} aria-hidden="true" />
-        <span className="item__body">
-          <span className="item__title" title={item.title}>
-            {item.title}
-          </span>
-          <span className="item__meta" aria-hidden="true">
-            <span className="focus__kind" style={{ color }}>
-              {KIND_LABEL[item.kind]}
+    <li className="focus__rowitem">
+      <details className="focus__row" data-keyscope tabIndex={-1}>
+        <summary
+          className="focus__summary"
+          aria-label={`${item.title}, ${item.reason}. Press to show actions.`}
+        >
+          <span className="item__chip" style={{ background: color }} aria-hidden="true" />
+          <span className="item__body">
+            <span className="item__title" title={item.title}>
+              {item.title}
             </span>
-            <span className="item__note">{item.reason}</span>
-            {item.detail && <span className="focus__detail">{item.detail}</span>}
+            <span className="item__meta" aria-hidden="true">
+              <span className="focus__kind" style={{ color }}>
+                {KIND_LABEL[item.kind]}
+              </span>
+              <span className="item__note">{item.reason}</span>
+              {item.detail && <span className="focus__detail">{item.detail}</span>}
+            </span>
           </span>
-        </span>
-        {time && (
-          <span className="num item__time" aria-hidden="true">
-            {time}
+          {time && (
+            <span className="num item__time" aria-hidden="true">
+              {time}
+            </span>
+          )}
+          <span className="focus__caret" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </span>
-        )}
-        <span className="focus__caret" aria-hidden="true">
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-      </summary>
-      <div className="focus__actions">
-        <ActionBar actions={actionsFor(item, capability)} subject={item.title} />
-      </div>
-    </details>
+        </summary>
+        <div className="focus__actions">
+          <ActionBar actions={actionsFor(item, capability, day)} subject={item.title} />
+        </div>
+      </details>
+    </li>
   );
 }
 

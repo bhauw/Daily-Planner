@@ -126,6 +126,14 @@ public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, PlannerMailSummarizin
         process.standardOutput = stdout
         process.standardError = stderr
 
+        // Exit is observed through a handler registered BEFORE launch, not `waitUntilExit()`.
+        // That call hung the test suite indefinitely with the child already gone and its output
+        // fully read — it relies on a run-loop notification that a cooperative-pool thread does
+        // not reliably receive. It sat after the watchdog was cancelled, so in production a
+        // draft could have hung the same way with nothing left to stop it.
+        let exited = ExitSignal()
+        process.terminationHandler = { _ in exited.fire() }
+
         do {
             try process.run()
         } catch {
@@ -164,6 +172,17 @@ public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, PlannerMailSummarizin
             stdout.fileHandleForReading,
             limit: PlannerProposedReply.maxBodyBytes
         )
+
+        if overflowed {
+            // Still talking. Stop it, which closes the pipe.
+            process.terminate()
+            deadline.cancel()
+            throw PlannerDraftingError.tooLarge
+        }
+
+        // The pipe is closed, so the child is exiting. The watchdog stays armed until it HAS:
+        // a child that closes its output and then lingers is still killed at the deadline.
+        await exited.wait()
         deadline.cancel()
 
         if watchdog.didFire {
@@ -172,14 +191,6 @@ public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, PlannerMailSummarizin
             throw PlannerDraftingError.unavailable
         }
 
-        if overflowed {
-            // Still talking. Stop it, which closes the pipe.
-            process.terminate()
-            throw PlannerDraftingError.tooLarge
-        }
-
-        // The pipe is closed, so the child is exiting; this returns promptly.
-        process.waitUntilExit()
         let errorText = String(data: (try? stderr.fileHandleForReading.readToEnd()) ?? Data(), encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {
             // "Your assistant is unavailable" and "you are signed out" need different actions
@@ -225,6 +236,35 @@ public struct ClaudeCodeReplyWriter: PlannerReplyDrafting, PlannerMailSummarizin
             lock.lock()
             defer { lock.unlock() }
             return fired
+        }
+    }
+
+    /// The child's exit, delivered once from its termination handler, awaitable from a task.
+    private final class ExitSignal: @unchecked Sendable {
+        private let lock = NSLock()
+        private var exited = false
+        private var waiter: CheckedContinuation<Void, Never>?
+
+        func fire() {
+            lock.lock()
+            exited = true
+            let resume = waiter
+            waiter = nil
+            lock.unlock()
+            resume?.resume()
+        }
+
+        func wait() async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                if exited {
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    waiter = continuation
+                    lock.unlock()
+                }
+            }
         }
     }
 

@@ -235,8 +235,11 @@ public struct TriageProfile: Codable, Hashable, Sendable {
                 categories: [.personal], origin: .builtIn
             ),
             TriageTopic(
+                // `.other` only. Commute and Work were ranked AFTER Other, not inside it, and
+                // binding them here re-sorted them — caught by the equivalence test. Leaving
+                // them unclaimed puts them after every topic, which is where they were.
                 id: "other", name: "Other", color: "slate",
-                categories: [.other, .commute, .work], origin: .builtIn
+                categories: [.other], origin: .builtIn
             ),
         ],
         overrides: [

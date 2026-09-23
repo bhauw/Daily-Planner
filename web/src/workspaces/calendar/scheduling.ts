@@ -55,12 +55,42 @@ export function fixedReason(event: PlannerEvent): string {
   return "Confirmed commitment — treated as a hard conflict";
 }
 
-/** The block's own span in minutes-from-midnight (Vancouver). */
+/**
+ * The block's own span in minutes from its START day's midnight (Vancouver). The end comes
+ * from the real duration, so an event that crosses midnight ends past 1440 rather than being
+ * clamped to its start — the old Math.max over two minutes-of-day values turned a 30-hour
+ * red-eye into a zero-length event that drew as a 20px sliver.
+ */
 export function eventInterval(event: PlannerEvent): Interval | null {
   const s = minutesOfDay(event.start);
   if (Number.isNaN(s)) return null;
-  const e = event.end ? minutesOfDay(event.end) : s + 30;
-  return { start: s, end: Math.max(s, e) };
+  if (!event.end) return { start: s, end: s + 30 };
+  const ms = new Date(event.end).getTime() - new Date(event.start).getTime();
+  if (Number.isNaN(ms)) return { start: s, end: s + 30 };
+  return { start: s, end: s + Math.max(0, Math.round(ms / 60_000)) };
+}
+
+const DAY_MIN = 24 * 60;
+
+/**
+ * The part of an event that falls on one Vancouver calendar day, in that day's minutes
+ * (0–1440), or null when it is not on that day. Grids file an event under every day it
+ * touches, not just the day it starts — a night shift is still on Tuesday at 01:00. An event
+ * ending exactly at midnight does not spill onto the next day.
+ */
+export function intervalOnDay(event: PlannerEvent, key: string): Interval | null {
+  const iv = eventInterval(event);
+  if (!iv) return null;
+  const startKey = dayKey(event.start);
+  if (key < startKey) return null;
+  if (key === startKey) return { start: iv.start, end: Math.min(iv.end, DAY_MIN) };
+  if (!event.end || iv.end <= DAY_MIN) return null;
+  // Later days are read off the end instant in Vancouver, so a DST change in between cannot
+  // shift the last day's end by an hour.
+  const endKey = dayKey(event.end);
+  const endMin = minutesOfDay(event.end);
+  if (key > endKey || (key === endKey && endMin === 0)) return null;
+  return { start: 0, end: key === endKey ? endMin : DAY_MIN };
 }
 
 export interface BusyBlock {
@@ -73,8 +103,8 @@ export interface BusyBlock {
 export function busyForDay(events: PlannerEvent[], key: string): BusyBlock[] {
   const out: BusyBlock[] = [];
   for (const e of events) {
-    if (dayKey(e.start) !== key) continue;
-    const iv = eventInterval(e);
+    // Every day the event touches, clipped to that day — not its start day only.
+    const iv = intervalOnDay(e, key);
     if (!iv) continue;
     const b = bufferFor(e);
     out.push({ event: e, interval: iv, buffered: { start: iv.start - b, end: iv.end + b } });
@@ -120,34 +150,38 @@ export interface Slot {
   reasons: string[]; // visible reasoning, one line each
 }
 
-function reasonsFor(
-  _key: string,
-  gapStart: number,
-  _duration: number,
-  fallback: boolean,
-  busy: BusyBlock[],
-): string[] {
+/**
+ * Why a slot starts where it does, one line each. The bounding event is the one whose buffer
+ * the slot starts at — not the nearest earlier in-person event, which made a 12:15 slot blame
+ * "transit from AQ 3150" for a lecture that ended at 10:20 when the 11:00 focus block's buffer
+ * was the real constraint.
+ */
+function reasonsFor(gapStart: number, fallback: boolean, busy: BusyBlock[], floor: number | null): string[] {
   const reasons: string[] = [];
-  // Nearest preceding in-person commitment, for a transit note.
-  const priorInPerson = busy
-    .filter((b) => b.event.location && b.interval.end <= gapStart)
+  const bound = busy
+    .filter((b) => b.buffered.end === gapStart)
     .sort((a, b) => b.interval.end - a.interval.end)[0];
-  if (priorInPerson) {
-    const gapAfter = gapStart - priorInPerson.interval.end;
-    reasons.push(`${bufferFor(priorInPerson.event)} min transit from ${priorInPerson.event.location}`);
-    if (gapAfter >= bufferFor(priorInPerson.event)) reasons.push("Clear of the prior meeting's buffer");
+  if (bound) {
+    const buffer = bufferFor(bound.event);
+    reasons.push(
+      bound.event.location
+        ? `${buffer} min travel buffer after ${bound.event.title} (${bound.event.location})`
+        : `${buffer} min buffer after ${bound.event.title}`,
+    );
+  } else if (floor != null && gapStart === floor) {
+    reasons.push("The next opening from now");
   } else {
-    reasons.push("No conflicts in the surrounding window");
+    reasons.push("Nothing earlier in the window to work around");
   }
   if (fallback) {
-    reasons.push("After-hours (6–8 PM) fallback — offered only because 9–6 had no opening");
+    reasons.push(`After-hours (${fmtMinutes(FALLBACK_START)}–${fmtMinutes(FALLBACK_END)}) fallback — offered only because normal hours had no opening`);
   } else {
-    reasons.push("Inside normal hours (9 AM–6 PM)");
+    reasons.push(`Inside normal hours (${fmtMinutes(NORMAL_START)}–${fmtMinutes(NORMAL_END)})`);
   }
   return reasons;
 }
 
-function makeSlot(key: string, gapStart: number, duration: number, fallback: boolean, busy: BusyBlock[]): Slot {
+function makeSlot(key: string, gapStart: number, duration: number, fallback: boolean, busy: BusyBlock[], floor: number | null): Slot {
   return {
     dayKey: key,
     weekday: `${key}`, // replaced below with a weekday label from an instant
@@ -155,9 +189,12 @@ function makeSlot(key: string, gapStart: number, duration: number, fallback: boo
     end: gapStart + duration,
     fallback,
     zone: "",
-    reasons: reasonsFor(key, gapStart, duration, fallback, busy),
+    reasons: reasonsFor(gapStart, fallback, busy, floor),
   };
 }
+
+/** Lead time before a slot can start today: nobody can be at a meeting that starts this minute. */
+export const NOW_LEAD_MIN = 15;
 
 /**
  * Ranked availability for a `duration`-minute meeting across the next `days`
@@ -169,12 +206,24 @@ export function findAvailability(
   fromKey: string,
   duration = SLOT_MIN,
   days = 7,
+  /**
+   * The clock. Without it the whole window is offered (tests, and the "as if" illustration);
+   * with it, days before today are skipped and today starts after now plus a lead, rounded up
+   * to the step — at 15:00 the finder was still ranking today's 12:15 first.
+   */
+  now?: Date,
 ): Slot[] {
   const normal: Slot[] = [];
   const fallback: Slot[] = [];
+  const nowIso = now ? now.toISOString() : null;
+  const todayKey = nowIso ? dayKey(nowIso) : null;
+  const floorToday = nowIso ? Math.ceil((minutesOfDay(nowIso) + NOW_LEAD_MIN) / STEP) * STEP : null;
 
   for (let i = 0; i < days; i++) {
     const key = addDays(fromKey, i);
+    if (todayKey && key < todayKey) continue;
+    const floor = key === todayKey ? floorToday : null;
+    const clip = (w: Interval): Interval => (floor == null ? w : { start: Math.max(w.start, floor), end: w.end });
     // A representative instant at noon, to read the weekday/zone in Vancouver.
     const noonInstant = new Date(`${key}T12:00:00Z`).toISOString();
     if (isWeekend(noonInstant)) continue;
@@ -183,18 +232,18 @@ export function findAvailability(
     const busy = busyForDay(planningEvents, key);
     const buffered = busy.map((b) => b.buffered);
 
-    const normalGaps = freeGaps(NORMAL_WINDOW, buffered, duration);
+    const normalGaps = freeGaps(clip(NORMAL_WINDOW), buffered, duration);
     if (normalGaps.length > 0) {
       for (const g of normalGaps) {
-        const slot = makeSlot(key, g.start, duration, false, busy);
+        const slot = makeSlot(key, g.start, duration, false, busy, floor);
         slot.weekday = weekday;
         slot.zone = zoneAbbrev(new Date(`${key}T${String(Math.floor(g.start / 60)).padStart(2, "0")}:00:00Z`).toISOString());
         normal.push(slot);
       }
     } else {
-      const fbGaps = freeGaps(FALLBACK_WINDOW, buffered, duration);
+      const fbGaps = freeGaps(clip(FALLBACK_WINDOW), buffered, duration);
       for (const g of fbGaps) {
-        const slot = makeSlot(key, g.start, duration, true, busy);
+        const slot = makeSlot(key, g.start, duration, true, busy, floor);
         slot.weekday = weekday;
         slot.zone = zoneAbbrev(new Date(`${key}T${String(Math.floor(g.start / 60)).padStart(2, "0")}:00:00Z`).toISOString());
         fallback.push(slot);
@@ -215,10 +264,32 @@ export function collides(start: number, duration: number, busy: BusyBlock[], ign
   return null;
 }
 
+/**
+ * What an instant range would sit on, as safe text — "Overlaps ECONOMICS 250 Lecture (incl. 30 min
+ * buffer)" — or null when it is clear. The one conflict check both the Calendar's drag and the
+ * app-wide "Move it" use, so the two can never disagree about whether a time is free.
+ */
+export function conflictFor(
+  events: PlannerEvent[],
+  startIso: string,
+  endIso: string,
+  ignoreId?: string,
+): string | null {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return null;
+  const s = minutesOfDay(startIso);
+  const hit = collides(s, Math.round((end - start) / 60_000), busyForDay(events, dayKey(startIso)), ignoreId);
+  return hit ? `Overlaps ${hit.event.title} (incl. ${bufferFor(hit.event)} min buffer)` : null;
+}
+
+/**
+ * "14:15" — the app's one clock. Everything else (formatTime, the Dayline, Tasks) is 24-hour,
+ * so the Calendar writing "2 PM" beside "14:00" on the same screen made two conventions out of
+ * one; this now matches formatTime exactly.
+ */
 export function fmtMinutes(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  const hh = ((h + 11) % 12) + 1;
-  const ap = h < 12 ? "AM" : "PM";
-  return m === 0 ? `${hh} ${ap}` : `${hh}:${String(m).padStart(2, "0")} ${ap}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }

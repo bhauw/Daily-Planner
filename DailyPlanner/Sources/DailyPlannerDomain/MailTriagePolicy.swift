@@ -33,6 +33,8 @@ public enum MailTriageReason: String, Codable, Hashable, Sendable, CaseIterable 
     case deadline
     /// Tuition, rent, an invoice, an enrolment — money or standing that lapses if ignored.
     case obligation
+    /// A rule the user wrote in their triage profile.
+    case custom
     /// No override applied; it sits in its category's place.
     case category
 }
@@ -90,8 +92,18 @@ public enum MailTriagePolicy {
     /// - Parameter unreadOnly: when true, messages already read are dropped. They are not
     ///   ranked below — a triage list is about what still needs attention.
     public static func triage(_ items: [PlannerMailItem], unreadOnly: Bool = false) -> MailTriageResult {
+        triage(items, profile: .default, unreadOnly: unreadOnly)
+    }
+
+    /// Ranks an inbox by a profile — the one ranking path. The zero-argument form above is this
+    /// with `TriageProfile.default`, which is today's compiled order written as data.
+    public static func triage(
+        _ items: [PlannerMailItem],
+        profile: TriageProfile,
+        unreadOnly: Bool = false
+    ) -> MailTriageResult {
         var hidden = 0
-        var entries: [MailTriageEntry] = []
+        var ranked: [(entry: MailTriageEntry, rank: Int)] = []
 
         for item in items {
             if item.isBulk {
@@ -99,21 +111,22 @@ public enum MailTriagePolicy {
                 continue
             }
             if unreadOnly, !item.isUnread { continue }
-            entries.append(entry(for: item))
+            let topic = TriageProfileMatcher.topic(for: item, profile: profile)
+            ranked.append((entry(for: item, topic: topic, profile: profile), profile.rank(ofTopic: topic?.id)))
         }
 
-        entries.sort(by: precedes)
-        return MailTriageResult(entries: entries, hiddenCount: hidden)
+        ranked.sort { lhs, rhs in
+            precedes(lhs.entry, lhs.rank, rhs.entry, rhs.rank)
+        }
+        return MailTriageResult(entries: ranked.map(\.entry), hiddenCount: hidden)
     }
 
     /// The total order. Band, then category, then newest first.
     ///
     /// Recency is the LAST key, not the first. That is the whole point: a promotional blast
     /// from four minutes ago used to sit above a midterm notice from this morning.
-    static func precedes(_ lhs: MailTriageEntry, _ rhs: MailTriageEntry) -> Bool {
+    static func precedes(_ lhs: MailTriageEntry, _ left: Int, _ rhs: MailTriageEntry, _ right: Int) -> Bool {
         if lhs.band != rhs.band { return lhs.band < rhs.band }
-        let left = rank(lhs.item.category)
-        let right = rank(rhs.item.category)
         if left != right { return left < right }
         if lhs.item.receivedAt != rhs.item.receivedAt {
             return lhs.item.receivedAt > rhs.item.receivedAt
@@ -122,44 +135,44 @@ public enum MailTriagePolicy {
         return lhs.item.id < rhs.item.id
     }
 
-    /// Where a category sits. Anything outside the stated order — `commute`, `work` — sorts
-    /// after `other` rather than being mapped onto it, so it is visible that they were not
-    /// ranked rather than quietly folded in.
-    static func rank(_ category: PlannerCategory) -> Int {
-        categoryOrder.firstIndex(of: category) ?? categoryOrder.count
+    /// One message's entry under the default profile.
+    static func entry(for item: PlannerMailItem) -> MailTriageEntry {
+        entry(for: item, topic: TriageProfileMatcher.topic(for: item, profile: .default), profile: .default)
     }
 
-    static func entry(for item: PlannerMailItem) -> MailTriageEntry {
+    static func entry(for item: PlannerMailItem, topic: TriageTopic?, profile: TriageProfile) -> MailTriageEntry {
         // A message whose content is withheld cannot be scanned for phrases, and guessing from
         // a subject alone would be a worse answer presented with the same confidence. It takes
-        // its category's place and says so.
-        let text = item.isPrivate ? item.title : "\(item.title)\n\(item.summary)"
-        if let (reason, phrase) = override(in: text) {
+        // its topic's place and says so. (The matcher applies the same rule.)
+        if let (rule, phrase) = TriageProfileMatcher.override(in: item, profile: profile) {
+            let reason = MailTriageReason(rawValue: rule.id).flatMap { $0.overridesCategory ? $0 : nil } ?? .custom
             return MailTriageEntry(
                 item: item,
                 band: .urgent,
                 reason: reason,
-                why: "\(reason.headline) — \"\(phrase)\""
+                why: "\(rule.headline) — \"\(phrase)\""
             )
         }
         return MailTriageEntry(
             item: item,
             band: .ordinary,
             reason: .category,
-            why: item.category.triageLabel
+            // Unclaimed mail says what it is rather than a topic it does not belong to — the
+            // same "Commute" / "Work" the compiled policy showed.
+            why: topic?.name ?? item.category.triageLabel
         )
     }
 
-    /// The first override whose phrase appears, in severity order.
+    /// The first override whose phrase appears in `text`, in the profile's severity order.
     ///
     /// Severity order matters: "your interview is confirmed, payment due" is an interview that
     /// mentions money, and a security warning outranks everything because the cost of reading
     /// it late is the highest on the list.
-    static func override(in text: String) -> (MailTriageReason, String)? {
+    static func override(in text: String, profile: TriageProfile = .default) -> (MailTriageReason, String)? {
         let haystack = normalized(text)
-        for reason in [MailTriageReason.security, .interview, .obligation, .deadline] {
-            for phrase in reason.phrases where contains(haystack, phrase) {
-                return (reason, phrase)
+        for rule in profile.overrides where rule.enabled {
+            for phrase in rule.phrases where contains(haystack, phrase) {
+                return (MailTriageReason(rawValue: rule.id).flatMap { $0.overridesCategory ? $0 : nil } ?? .custom, phrase)
             }
         }
         return nil
@@ -186,54 +199,6 @@ public enum MailTriagePolicy {
 
     public static func contains(_ normalizedHaystack: String, _ phrase: String) -> Bool {
         normalizedHaystack.contains(" \(phrase) ")
-    }
-}
-
-extension MailTriageReason {
-    /// What the row says. Written for the person reading it, not for the rule.
-    var headline: String {
-        switch self {
-        case .security: return "Security warning"
-        case .interview: return "Interview"
-        case .deadline: return "Has a deadline"
-        case .obligation: return "Payment or enrolment"
-        case .category: return "Ranked by category"
-        }
-    }
-
-    /// The phrases that trigger this reason. Whole-word matched.
-    ///
-    /// Deliberately short and specific. A long list catches more and is wrong more often, and
-    /// being wrong here means burying something that mattered under something that did not.
-    /// These are meant to be corrected against a real inbox, not guessed at exhaustively.
-    var phrases: [String] {
-        switch self {
-        case .security:
-            return [
-                "security alert", "suspicious sign in", "unusual sign in", "new sign in",
-                "unusual activity", "suspicious activity", "verify your identity",
-                "password was changed", "password was reset", "fraud alert",
-                "unauthorized transaction", "compromised",
-            ]
-        case .interview:
-            return [
-                "interview", "phone screen", "final round", "assessment centre",
-                "assessment center", "superday", "hiring manager",
-            ]
-        case .obligation:
-            return [
-                "tuition", "rent is due", "invoice", "payment due", "amount due",
-                "past due", "enrolment deadline", "enrollment deadline", "registration closes",
-            ]
-        case .deadline:
-            return [
-                "due today", "due tomorrow", "deadline", "final notice", "action required",
-                "expires today", "expires tomorrow", "last day", "closes today",
-                "response required", "rsvp by",
-            ]
-        case .category:
-            return []
-        }
     }
 }
 

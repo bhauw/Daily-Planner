@@ -27,7 +27,7 @@ import type { Api, Draft, ReplyIntent } from "../contract";
 import { ThreadList, type ThreadRow } from "./ThreadList";
 import { DraftEditor } from "./DraftEditor";
 import { ContextUsed } from "./ContextUsed";
-import { detailFor, isSendAction, type DraftDetail } from "./data";
+import { detailFor, type DraftDetail } from "./data";
 import {
   approve,
   editBody,
@@ -115,7 +115,8 @@ function Loaded({
    * Stable identities (useCallback), because the body pane refetches whenever these change:
    * a fresh function every render would reload the email on every keystroke in the reply.
    */
-  const caps = useAsync(async () => (await api.settings()).capability);
+  const settings = useAsync(async () => await api.settings());
+  const caps = { status: settings.status, data: settings.data?.capability };
   // Optimistic while the settings load: withholding the fetch until then would flash "could not
   // be loaded" on every open. An engine without the route answers 404 and the preview stays.
   const canReadBody = caps.status !== "ready" || caps.data?.canReadBody === true;
@@ -125,6 +126,20 @@ function Loaded({
     (id: string) => api.summarizeMail({ messageId: id }),
     [api],
   );
+
+  /*
+   * Drafting is offered only when the engine says an assistant is ON — the same test the
+   * composer's desk applies. It was passed unconditionally, so with the assistant switched off
+   * the six chips and "Write it" still showed and failed when pressed. Nothing is offered until
+   * the settings arrive: an offer that vanishes a moment later is worse than one that appears.
+   */
+  const assist = settings.data?.assist;
+  const canDraft = settings.status === "ready" && caps.data?.canDraft === true && assist?.enabled === true;
+  const assistantOff = settings.status === "ready" && !canDraft;
+
+  // The week "Offer times" finds free slots in. Read only when the picker opens, and only the
+  // slot times it yields are ever sent anywhere (compose/offerSlots.ts).
+  const readWeek = useCallback(() => api.week(), [api]);
 
   const items = useMemo<WorkItem[]>(
     () => drafts.map((draft) => ({ draft, detail: detailFor(draft) })),
@@ -157,6 +172,24 @@ function Loaded({
   const selected = items.find((it) => it.draft.id === selectedId) ?? items[0];
   const selectedState = states[selected.draft.id] ?? initialState(selected.detail.subject, selected.detail.body);
 
+  /*
+   * Reject was one click from Review & send, instant, and terminal, with nothing to take it back.
+   * The state from just before it is kept, and Undo puts it back exactly — body, status and any
+   * approval — rather than walking the machine, which (rightly) has no way out of `rejected`.
+   */
+  const [beforeReject, setBeforeReject] = useState<Record<string, DraftState>>({});
+  function rejectDraft(id: string) {
+    const current = states[id];
+    if (current && current.status !== "rejected") setBeforeReject((prev) => ({ ...prev, [id]: current }));
+    update(id, reject);
+  }
+  function undoReject(id: string) {
+    const previous = beforeReject[id];
+    if (!previous) return;
+    setStates((prev) => ({ ...prev, [id]: previous }));
+    setBeforeReject(({ [id]: _gone, ...rest }) => rest);
+  }
+
   function update(id: string, fn: (s: DraftState) => DraftState) {
     setStates((prev) => ({ ...prev, [id]: fn(prev[id]) }));
   }
@@ -166,13 +199,18 @@ function Loaded({
     category: it.detail.category,
     status: (states[it.draft.id] ?? initialState(it.detail.subject, it.detail.body)).status,
     age: ageFor(it.draft.id, i),
-    replyObligated: isSendAction(it.draft.kind),
+    replyObligated: it.detail.replyExpected,
   }));
 
   const pending = rows.filter((r) => r.status !== "rejected").length;
 
   return (
     <div className={["mail", detached ? "mail--detached" : ""].filter(Boolean).join(" ")}>
+      {/*
+       * No page <h1> here either — the outermost heading was ColumnHeader's h3 ("Draft
+       * workbench"). sr-only: the visible name is already the thread pane's eyebrow/title.
+       */}
+      <h1 className="sr-only">Mail</h1>
       <section className="mail__pane mail__threads-pane scroll-y" aria-label="Pending drafts">
         <ColumnHeader eyebrow="Mail" title="Draft workbench" count={`${pending} waiting`} />
         <div className="mail__hairline" />
@@ -190,14 +228,20 @@ function Loaded({
           draft={selected.draft}
           detail={selected.detail}
           state={selectedState}
-          onDraft={onDraft}
+          onDraft={canDraft ? onDraft : undefined}
+          assistant={canDraft ? { provider: assist!.provider, leavesMachine: assist!.contentLeavesMachine } : undefined}
+          assistantOff={assistantOff}
           readBody={canReadBody ? readBody : undefined}
           summarize={canSummarize ? summarize : undefined}
+          readWeek={readWeek}
           onEditSubject={(v) => update(selected.draft.id, (s) => editSubject(s, v))}
           onEditBody={(v) => update(selected.draft.id, (s) => editBody(s, v))}
           onPreflight={() => update(selected.draft.id, preflight)}
           onApprove={() => update(selected.draft.id, approve)}
-          onReject={() => update(selected.draft.id, reject)}
+          onReject={() => rejectDraft(selected.draft.id)}
+          onUndoReject={
+            beforeReject[selected.draft.id] ? () => undoReject(selected.draft.id) : undefined
+          }
         />
       </section>
 

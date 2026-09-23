@@ -33,7 +33,12 @@ const UNKNOWN_SAFETY: Safety = {
 };
 
 interface SafetyRailProps {
-  lastScan?: string; // e.g. "12:00" — a time only, never content
+  /**
+   * When the engine last scanned, as a display time. The shell passed a hardcoded "12:00" here,
+   * which read as a real reading every time the app opened. No engine DTO carries a scan
+   * timestamp yet, so absent renders "—": an unknown time stated as unknown, never a guess.
+   */
+  lastScan?: string | null;
   /**
    * What the engine says it may do right now. Null while unknown, which renders the read-only
    * wording — never the permissive one, because claiming less than is true is recoverable and
@@ -71,7 +76,11 @@ export function SafetyRail({
   return (
     <div
       className={`saferail${writes ? " saferail--writes" : ""}`}
-      role="note"
+      // role="note" is not a landmark, so this persistent, always-visible banner sat outside
+      // the app's landmark structure on every route. "region" makes it a landmark; the label
+      // is already the safety state's own wording, so it names a real, unique region rather
+      // than a generic one.
+      role="region"
       aria-label={state.label}
     >
       {writes ? (
@@ -92,16 +101,18 @@ export function SafetyRail({
           }`}
           role="status"
           aria-label={assist.label}
+          title={assist.label}
         >
-          {assist.label}
+          <span className="saferail__assisttext">{assist.label}</span>
         </span>
       )}
       <span className="saferail__spacer" />
-      {lastScan && (
-        <span className="saferail__pill num" aria-label={`Last scan ${lastScan}`}>
-          Last scan {lastScan}
-        </span>
-      )}
+      <span
+        className="saferail__pill num"
+        aria-label={lastScan ? `Last scan ${lastScan}` : "Last scan not reported"}
+      >
+        Last scan {lastScan || "—"}
+      </span>
       {onOpenSettings && (
         <Button variant="ghost" size="sm" icon={<SettingsIcon />} label="Settings" onClick={onOpenSettings} />
       )}

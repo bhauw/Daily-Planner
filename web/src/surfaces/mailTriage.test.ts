@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Draft } from "../api/client";
-import { MAIL_CATEGORY_ORDER, groupMail } from "./mailTriage";
+import { MAIL_CATEGORY_ORDER, groupMail, isNoReplyAddress, mailBadgeCount, waitingOn } from "./mailTriage";
 
 /**
  * Grouping the ranked inbox.
@@ -93,5 +93,46 @@ describe("groupMail", () => {
     // Break caught: this list drifts from MailTriagePolicy.categoryOrder, so sections render in
     // a different order than the rows were ranked in.
     expect(MAIL_CATEGORY_ORDER).toEqual(["school", "career", "finance", "personal", "other"]);
+  });
+});
+
+/*
+ * The sidebar said "Mail 6 · 6 unread" off `drafts.length`, counting a calendar bundle and read
+ * mail, while Digest said four. One number, one definition: unread messages.
+ */
+describe("mailBadgeCount", () => {
+  it("counts unread messages only — not bundles, not read mail", () => {
+    const drafts = [
+      draft({ id: "a", unread: true }),
+      draft({ id: "b", unread: true }),
+      draft({ id: "c", unread: false }),
+      draft({ id: "d", kind: "bundle" }),
+    ];
+    expect(mailBadgeCount(drafts)).toBe(2);
+  });
+});
+
+describe("isNoReplyAddress", () => {
+  it("recognises the ways senders say nobody reads replies", () => {
+    for (const a of ["no-reply@accounts.example.com", "noreply@x.com", "donotreply@x.com", "do-not-reply@x.com", "notifications-noreply@x.com", "Bank <no_reply@bank.com>"]) {
+      expect(isNoReplyAddress(a), a).toBe(true);
+    }
+    for (const a of ["recruiter@example.com", "replyall@x.com", "nora@x.com", undefined]) {
+      expect(isNoReplyAddress(a), String(a)).toBe(false);
+    }
+  });
+});
+
+/*
+ * Digest said "Waiting on: Your reply" for every message — a bank statement and a no-reply
+ * security alert included. Neither is waiting on a reply, and saying so is a false task.
+ */
+describe("waitingOn", () => {
+  it("says a reply only for mail that can be and wants to be answered", () => {
+    expect(waitingOn(draft({ id: "r", sender: "recruiter@x.com", category: "career", reason: "interview", band: "urgent" }))).toBe("Your reply");
+    expect(waitingOn(draft({ id: "s", sender: "alerts@x.com", reason: "security", band: "urgent" }))).toBeNull();
+    expect(waitingOn(draft({ id: "n", sender: "no-reply@x.com", category: "school" }))).toBeNull();
+    expect(waitingOn(draft({ id: "f", sender: "alerts@bank.com", category: "finance", reason: "category" }))).toBeNull();
+    expect(waitingOn(draft({ id: "p", sender: "billing@x.com", category: "other", reason: "obligation", band: "urgent" }))).toBe("Your payment");
   });
 });

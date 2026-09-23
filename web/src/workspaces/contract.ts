@@ -42,6 +42,10 @@ export { CountBadge, Tag } from "../components/Badge";
 export { ColumnHeader, EmptyState, ConnectionState } from "../components/Column";
 export { PressureBar } from "../components/PressureBar";
 
+// Keyboard shortcuts: a workspace takes its keys and the "is the person typing" rule from the
+// one registry the "?" overlay reads, so a key it advertises is a key the overlay lists.
+export { CAPTURE_KEY, isKey, keyLabel, shouldIgnoreKey } from "../shell/shortcuts";
+
 import type { Api } from "../api/client";
 
 /**

@@ -13,19 +13,29 @@
   font-weight: var(--weight-medium);
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard);
+    border-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
 }
 
 .btn:hover {
-  background: var(--surface);
+  background: var(--surface-hover);
 }
 
-.btn:active {
-  background: var(--chrome);
+/* Pressed is its own step, plus a half-pixel give, so a click is visible on every variant. */
+.btn:active:not(:disabled) {
+  background: var(--surface-pressed);
+  transform: translateY(0.5px) scale(0.985);
 }
 
-.btn:disabled {
-  opacity: 0.5;
+/*
+ * Disabled is a flat neutral control, not a faded version of the live one: a half-transparent
+ * blue primary still read as pressable. Same treatment for every variant.
+ */
+.btn:disabled,
+.btn:disabled:hover {
+  background: var(--disabled-bg);
+  border-color: var(--disabled-border);
+  color: var(--disabled-ink);
   cursor: default;
 }
 
@@ -38,13 +48,23 @@
   border-color: var(--accent-fill);
   color: var(--accent-fill-ink);
 }
-.btn--primary:hover {
+.btn--primary:hover:not(:disabled) {
   background: var(--accent-fill-hover);
   border-color: var(--accent-fill-hover);
 }
-.btn--primary:active {
+.btn--primary:active:not(:disabled) {
   background: var(--accent-fill-active);
   border-color: var(--accent-fill-active);
+}
+
+/*
+ * The base .btn border (--border) is too close in luminance to the surfaces a button sits on
+ * to read as a boundary (axe non-text contrast, ~1.2:1 against the page — need 3:1). --primary
+ * already clears 3:1 via --accent-fill and --ghost has no visible border at all, so only the
+ * default variant needs its own, stronger border colour.
+ */
+.btn--default {
+  border-color: var(--btn-border);
 }
 
 .btn--ghost {
@@ -52,7 +72,11 @@
   border-color: transparent;
 }
 .btn--ghost:hover {
-  background: var(--surface);
+  background: var(--surface-hover);
+}
+.btn--ghost:disabled {
+  background: transparent;
+  border-color: transparent;
 }
 
 /* Sizes. md meets the 44x44 target through the touch-target expansion below. */

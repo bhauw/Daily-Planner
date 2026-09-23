@@ -13,6 +13,8 @@
  *   --text-2      (#98989D) on --bg =  5.8:1  -> passes 4.5:1, used for all small text
  *   --text-3      (#6E6E73) on --bg =  3.3:1, on --surface 3.0:1, on --surface-2 2.8:1
  *                 -> FAILS 4.5:1 body at every depth; restricted below
+ *   --text-2 on --chrome 5.53:1, on --surface-hover 5.00:1, on --surface-pressed 4.60:1
+ *   category tag ink on its 8% tint: worst case 4.62:1 (school, on --surface-2)
  * Because the accessibility floor is enforced and outranks pixel-fidelity, the
  * semantic layer routes small informational text (eyebrows, counts, times, meta)
  * to --text-2. --text-3 is reserved for decorative rules, disabled states, and
@@ -44,7 +46,7 @@
   --p-rail: #413326;
   --p-surface: #252525;
   --p-surface-2: #2c2c2c;
-  --p-border: #333331;
+  --p-border: #3a3a38; /* lifted from the sampled #333331 (1.21:1 on surface) to 1.34:1 so card edges read */
   --p-border-soft: #2a2a29;
 
   --p-white: #ffffff;
@@ -59,6 +61,10 @@
   --p-career: #ffd60a;
   --p-personal: #ff00ff;
   --p-warn: #ff9f0a;
+  /* Over, failed, not added. macOS system red lifted until it clears 4.5:1 as small text on
+     every surface (measured, sRGB: 5.91:1 on --bg, 5.43:1 on --surface, 4.95:1 on --surface-2).
+     Distinct from --warn so "tight" and "over" are two states, not one colour doing both. */
+  --p-danger: #ff6961;
 
   /* ----- LAYER 2 · SEMANTIC (purpose aliases — consume these) ----- */
   --bg: var(--p-bg);
@@ -68,6 +74,25 @@
   --surface-2: var(--p-surface-2);
   --border: var(--p-border);
   --border-soft: var(--p-border-soft);
+
+  /*
+   * Interaction steps. The sampled ramp (--bg -> --surface -> --surface-2) is only 1.10-1.19:1
+   * apart, so a row that hovered to --surface on --bg barely changed. These are the states, as
+   * their own names, so a component never has to borrow a depth to mean "hovered". Measured,
+   * sRGB: --text-2 on --surface-hover = 5.00:1, on --surface-pressed = 4.60:1 — both keep the
+   * small-text floor, so a row's meta stays legible while it is under the pointer.
+   */
+  --surface-hover: #2a2a2a;
+  --surface-pressed: #303030;
+
+  /*
+   * Disabled. It used to be opacity 0.5 on whatever the control was, which left a primary
+   * button a half-transparent blue that still read as enabled. Disabled is now a flat, neutral
+   * control: WCAG exempts it from 4.5:1, but --text-2 on --surface-2 still measures 4.86:1.
+   */
+  --disabled-bg: var(--surface-2);
+  --disabled-border: var(--border);
+  --disabled-ink: var(--text-2);
 
   --text: var(--p-white);
   --text-2: var(--p-grey-1); /* small informational text: labels, counts, meta */
@@ -85,11 +110,12 @@
    * never climbs back through the floor. Measured, sRGB, against #FFFFFF:
    *   --accent-fill         #0D6AD0 = 5.26:1
    *   --accent-fill-hover   #0A5FBB = 6.24:1
-   *   --accent-fill-active  #0A5CB4 = 6.56:1
+   *   --accent-fill-active  #094C96 = 8.45:1
+   * Active used to be #0A5CB4 — one RGB step from hover, so pressing looked like nothing.
    */
   --accent-fill: #0d6ad0;
   --accent-fill-hover: #0a5fbb;
-  --accent-fill-active: #0a5cb4;
+  --accent-fill-active: #094c96;
   --accent-fill-ink: var(--p-white);
 
   /*
@@ -154,8 +180,23 @@
    */
   --cat-school-ink: var(--topic-blue);
   --cat-personal-ink: var(--topic-magenta);
+  /*
+   * The neutral categories (other, commute, work) as ink. Their mark is --text-2's grey, which
+   * is 4.86:1 bare on --surface-2 and falls under the floor once .tag lays its tint beneath it
+   * (4.27:1). Lifted just enough to clear 4.5:1 on the tint over every depth: 4.93:1 worst case.
+   */
+  --cat-neutral-ink: #a5a5aa;
+
+  /*
+   * The category tag's fill: the ink itself at this share over whatever surface the tag sits
+   * on. 8%, not the 10-14% that looks nicer, because the tint lifts the background under
+   * the ink: at 10% school blue drops to 4.44:1 on --surface-2. contrast.test.ts recomputes
+   * every category ink against this tint on every depth.
+   */
+  --tag-tint: 8%;
 
   --warn: var(--p-warn);
+  --danger: var(--p-danger);
 
   --focus-ring: var(--p-school);
 
@@ -196,7 +237,24 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  --tracking-eyebrow: 0.14em;
+  /*
+   * One eyebrow. It was mono 10px/0.14em in one column head, sans 11px in the calendar, sans
+   * 10px in the Focus lead and an off-scale 9.5px mono in the sidebar. The rule now: mono is
+   * for numerals only (times, counts, durations, the zone chip); every label is sans.
+   */
+  --eyebrow-font: var(--font-sans);
+  --eyebrow-size: var(--text-2xs);
+  --eyebrow-weight: var(--weight-semibold);
+  --eyebrow-color: var(--text-2);
+  --tracking-eyebrow: 0.08em;
+
+  /*
+   * Three title sizes, one meaning each: a column inside a multi-column surface, a page that
+   * owns the whole surface (Calendar, Digest, a detached window), and the one hero on Focus.
+   */
+  --title-col: var(--text-xl); /* 17px */
+  --title-page: 22px;
+  --title-hero: 28px;
 
   /* ----- LAYER 2 · RADII, BORDERS, ELEVATION, MOTION ----- */
   --radius-sm: 3px;
@@ -212,6 +270,8 @@
 
   --motion-fast: 90ms;
   --motion-base: 150ms;
+  --motion-slow: 240ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 
   /* ----- LAYER 3 · COMPONENT TOKENS ----- */
@@ -219,10 +279,11 @@
   --assistant-width: 290px;
   --column-min: 260px; /* mirrors ThreeColumnLayoutPolicy: max(260, total*0.27) */
 
-  --safety-height: 34px;
+  --safety-height: 30px;
   --titlebar-height: 38px;
 
   --nav-radius: var(--radius-md);
+  --nav-height: 40px; /* visible row; the hit area extends to --touch-min (sidebar-rail.css) */
   --nav-fg: var(--text-2);
   --nav-fg-active: var(--text);
   --nav-bg-active: var(--accent-soft);
@@ -230,6 +291,18 @@
   --colhead-pad: var(--space-7) var(--space-8) var(--space-5);
   --item-pad: var(--space-3) var(--space-8);
   --card-pad: var(--space-5) var(--space-6);
+
+  /*
+   * The default-variant button's border. --border (1.34:1 on --surface, by its own comment
+   * above) reads fine as a 1px card edge, but axe's non-text pass measured a default button's
+   * border at ~1.2:1 against the page around it — too close in luminance to read as a control
+   * boundary at all (WCAG 1.4.11 Non-text Contrast). This is its own token, not a change to
+   * --border, so cards and inputs elsewhere keep their original, deliberately subtle edge.
+   * Measured, sRGB: 4.22:1 on --bg, 4.02:1 on --chrome, 3.88:1 on --surface, 3.54:1 on
+   * --surface-2, 3.63:1 on --surface-hover, 3.34:1 on --surface-pressed — clears 3:1 against
+   * every background a default button sits on (contrast.test.ts).
+   */
+  --btn-border: #808080;
 
   --dayline-gutter: 44px;
 

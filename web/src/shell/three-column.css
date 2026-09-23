@@ -24,7 +24,7 @@
 }
 
 .threecol__assistant {
-  background: #212121;
+  background: var(--chrome);
 }
 
 .astat {
@@ -45,4 +45,48 @@
   flex: 0 0 14px;
   color: var(--text-2);
   margin-top: 1px;
+}
+
+/* The Plan my day offer, under Today's header. */
+.threecol__plan {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--space-8) var(--space-6);
+}
+
+.threecol__plannote {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+/*
+ * 200% zoom (WCAG 1.4.10 Reflow): 2×--column-min (260px) + --assistant-width (290px) already
+ * floors past a 720 CSS px viewport (1440×900 at 200%), and this file had no @media queries at
+ * all, so every route got a horizontal scrollbar with controls partly off-screen. 900px sits
+ * comfortably above that 810px floor. Custom properties can't be read inside an @media
+ * condition, so the number is written out rather than computed from the tokens (three-column.test.ts
+ * checks it stays above the token floor).
+ *
+ * Below it the three columns stack into one, scrolling as a single column — the same pattern
+ * the workspaces' own detached windows already use (.mail--detached, .cal--detached,
+ * .tasks--detached): give up each pane's own scroll region so the page scrolls as one.
+ */
+@media (max-width: 900px) {
+  .threecol {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: min-content;
+    overflow-y: auto;
+  }
+
+  .threecol__pane {
+    height: auto;
+    overflow: visible;
+  }
+
+  .threecol__pane + .threecol__pane {
+    border-left: none;
+    border-top: var(--hairline);
+  }
 }

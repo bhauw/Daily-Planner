@@ -29,6 +29,7 @@ import type {
   Settings,
   TasksResponse,
 } from "../api/client";
+import { dayKey } from "../workspaces/calendar/tz";
 
 const DAY = "2026-09-14";
 const TZ = "-07:00"; // PDT on the mock day
@@ -82,11 +83,32 @@ function shifted(events: PlannerEvent[], dayOffset: number, idSuffix: string): P
   }));
 }
 
+/*
+ * A career conversation that ended a few hours before the page loaded, so the prep card's
+ * follow-through state ("Thank-you due", Draft thank-you) is visible in `npm run dev` at any
+ * real date. Everything else here is pinned to DAY, which is days in the past by now; this one
+ * row is relative on purpose, and it is in the week only — not on DAY's schedule, where its
+ * date would be wrong.
+ */
+const recentEnd = new Date(Date.now() - 3 * 60 * 60 * 1000);
+const recentInterview: PlannerEvent = {
+  id: "w-recent-interview",
+  title: "Interview — Example Corp Audit Co-op",
+  category: "career",
+  kind: "event",
+  start: new Date(recentEnd.getTime() - 45 * 60 * 1000).toISOString(),
+  end: recentEnd.toISOString(),
+  due: null,
+  location: "Example Corp, 939 Granville St",
+  calendarId: "primary",
+};
+
 const week: WeekResponse = {
   start: DAY,
   days: 7,
   events: [
     ...schedule,
+    recentInterview,
     ...shifted(schedule, 1, "d1"),
     ...shifted(schedule.slice(0, 2), 2, "d2"),
     ...shifted(schedule.slice(1, 3), 3, "d3"),
@@ -111,6 +133,9 @@ const drafts: DraftsResponse = {
     { id: "d4", title: "ECONOMICS 250 — midterm room change", summary: "The Thursday midterm moves to AQ 3150. No action needed unless you had a conflict.", kind: "reply", sender: "registrar@example.edu", category: "school", receivedAt: null, threadId: "thread-d4", band: "ordinary", reason: "category", why: "School", unread: true },
     { id: "d1", title: "Reply — Example Corp recruiter", summary: "Confirms Thursday 14:30, notes the ECONOMICS 250 midterm conflict, proposes Friday 10:00 instead.", kind: "reply", sender: "recruiter@example.com", category: "career", receivedAt: null, threadId: "thread-d1", band: "ordinary", reason: "category", why: "Recruiting", unread: false },
     { id: "d5", title: "Your statement is ready", summary: "September statement for your chequing account.", kind: "reply", sender: "alerts@example-bank.com", category: "finance", receivedAt: null, threadId: "thread-d5", band: "ordinary", reason: "category", why: "Finance", unread: true },
+    // The thread that arranged the Example Consulting chat. The subject does not say "Example Consulting" — the prep card
+    // links it by the sender's host, which is the match it shows the reason for.
+    { id: "k1", title: "Coffee chat Monday?", summary: "Great to connect at the Sauder mixer. Example Cafe at 1:30 works — I'll grab a table by the window.", kind: "reply", sender: "jordan.lee@example.test", category: "career", receivedAt: null, threadId: "thread-k1", band: "ordinary", reason: "category", why: "Recruiting", unread: false },
     { id: "d2", title: "Calendar + Task bundle", summary: "Creates the Example Consulting chat, a prep task, and a 25-minute transit buffer.", kind: "bundle" },
   ],
 };
@@ -270,6 +295,13 @@ const WRITES: Record<string, (body: any) => Response> = {
     return json(response);
   },
   "/api/calendar/events": (body: CreateEventRequest) => {
+    creates += 1;
+    if (!settings.capability.canSchedule) {
+      return fail(403, "write_not_permitted", "This account is connected for reading only.");
+    }
+    if (failCreates.has(creates)) {
+      return fail(502, "provider_refused", "Google would not accept that event. Try again in a moment.");
+    }
     if (!body?.title?.trim()) return fail(400, "invalid_request", "Give the event a title.");
     const start = new Date(body?.start ?? "");
     const end = new Date(body?.end ?? "");
@@ -279,11 +311,31 @@ const WRITES: Record<string, (body: any) => Response> = {
     if (end <= start) return fail(400, "invalid_request", "The end time has to be after the start time.");
     const response: CreateEventResponse = {
       ok: true,
-      id: `mock-evt-${Date.now()}`,
+      // The create count too: a plan writes several in the same millisecond.
+      id: `mock-evt-${Date.now()}-${creates}`,
       start: body.start,
       end: body.end,
       htmlLink: null,
     };
+    /*
+     * Put it on the mock day, shaped exactly like an engine read. Without this a created block
+     * vanished on the reload that follows every write, so dev could never show the one thing a
+     * write is for — the event appearing on Today. The engine files an event it did not
+     * categorise under `other` on the primary calendar, and so does this.
+     */
+    if (dayKey(body.start) === DAY) {
+      schedule.push({
+        id: response.id,
+        title: body.title.trim(),
+        category: "other",
+        kind: "event",
+        start: body.start,
+        end: body.end,
+        due: null,
+        location: body.location ?? null,
+        calendarId: body.calendarId ?? "primary",
+      });
+    }
     // eslint-disable-next-line no-console
     console.info("[dev] mock event — nothing left this machine", { title: body.title });
     return json(response);
@@ -294,11 +346,23 @@ const WRITES: Record<string, (body: any) => Response> = {
     if (!intents.includes(body?.intent)) {
       return fail(400, "invalid_request", "That is not something it knows how to draft.");
     }
+    // Same limit the engine enforces (PlannerReplyRequest.maxInstructionBytes), so a client
+    // that overshoots fails here in dev rather than only in the shipped app.
+    if (body.instruction && new TextEncoder().encode(body.instruction).length > 1000) {
+      return fail(400, "invalid_request", "That instruction is too long.");
+    }
+    // "Offer times" sends its slots as "- " lines. Echo them into a plausible reply so the
+    // flow can be walked end to end in `npm run dev`; any other instruction is just quoted.
+    const offered = (body.instruction ?? "").split("\n").filter((line) => line.startsWith("- "));
     const response: DraftReplyResponse = {
       ok: true,
-      body:
-        `This is a mock draft for the "${body.intent}" intent. ` +
-        "Nothing was sent to any assistant and nothing left this machine.",
+      body: offered.length
+        ? "Hi,\n\nThanks for reaching out — I'd love to chat. Would any of these work for you? (Pacific time)\n\n" +
+          offered.join("\n") +
+          "\n\nHappy to work around your schedule if none of these suit.\n\nBest,\nBraxton\n\n" +
+          "[Mock draft — no assistant was called.]"
+        : `This is a mock draft for the "${body.intent}" intent. ` +
+          "Nothing was sent to any assistant and nothing left this machine.",
       provider: "Mock assistant (dev only)",
     };
     // eslint-disable-next-line no-console
@@ -344,7 +408,33 @@ const WRITES: Record<string, (body: any) => Response> = {
   },
 };
 
+/*
+ * Dev switches, read once from the URL the app was opened with, so states that need a real
+ * account to reach can be seen and screenshotted here:
+ *   ?mock=readonly   — a grant that can read but not send or schedule
+ *   ?mockfail=2,3    — the 2nd and 3rd event creates since load are refused by "Google"
+ * Absent, the mock behaves exactly as before.
+ */
+let creates = 0;
+let failCreates = new Set<number>();
+
+function applyDevSwitches() {
+  const params = new URLSearchParams(window.location.search);
+  failCreates = new Set(
+    (params.get("mockfail") ?? "")
+      .split(",")
+      .map((n) => Number(n.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0),
+  );
+  if (params.get("mock") === "readonly") {
+    settings.capability = { ...settings.capability, canSend: false, canSchedule: false, canReschedule: false };
+    settings.safety = { mode: "read-only", externalWrites: false, label: "Read-only · nothing can be sent or scheduled" };
+    health.mode = "read-only";
+  }
+}
+
 export function installMockEngine() {
+  applyDevSwitches();
   window.__DP_TOKEN__ = "dev-mock-token";
   const realFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

@@ -33,6 +33,7 @@ export function MessageBody({
   snippet,
   readBody,
   summarize,
+  onShown,
 }: {
   messageId: string;
   /** Shown while the body loads, and instead of it if it cannot be. */
@@ -41,6 +42,8 @@ export function MessageBody({
   readBody?: (id: string) => Promise<MailBody>;
   /** Absent when there is no assistant. Sends the body off the machine when called. */
   summarize?: (id: string) => Promise<{ summary: string; provider: string }>;
+  /** Told what is on screen — the body once it loads, the preview otherwise. */
+  onShown?: (text: string) => void;
 }) {
   const [body, setBody] = useState<BodyState>({ status: "loading" });
   const [summary, setSummary] = useState<SummaryState>({ status: "idle" });
@@ -70,6 +73,7 @@ export function MessageBody({
 
   const text = body.status === "ready" ? body.body.text : null;
   const shown = text ?? snippet;
+  useEffect(() => onShown?.(shown), [shown, onShown]);
 
   // Whether the clamp is hiding anything, measured rather than guessed from a character
   // count: the toggle must never be a button that does nothing.
@@ -80,7 +84,8 @@ export function MessageBody({
   }, [shown, open]);
 
   async function onSummarize() {
-    if (!summarize) return;
+    // Busy is aria-disabled rather than disabled (see the button), so a second press lands here.
+    if (!summarize || summary.status === "busy") return;
     setSummary({ status: "busy" });
     try {
       const result = await summarize(messageId);
@@ -115,7 +120,10 @@ export function MessageBody({
               type="button"
               size="sm"
               variant="default"
-              disabled={summary.status === "busy"}
+              // aria-disabled, not disabled: disabling the button he just pressed drops his focus
+              // to <body> (a disabled control cannot hold it), so a keyboard user was left
+              // nowhere for the whole wait.
+              aria-disabled={summary.status === "busy"}
               onClick={() => void onSummarize()}
             >
               {summary.status === "busy" ? "Summarising…" : summary.status === "done" ? "Summarise again" : "Summarise"}
@@ -123,6 +131,15 @@ export function MessageBody({
           </span>
         )}
       </div>
+
+      {/*
+        Said out loud, not only on the button: "Summarising…" as button text is not announced,
+        so a screen-reader user had no sign that a few-second request was running. Always
+        rendered, because a live region only announces changes to one that already exists.
+      */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {summary.status === "busy" ? "Summarising this email…" : ""}
+      </span>
 
       {summary.status === "done" && (
         <div className="message__summary" role="status" aria-label="Summary">
@@ -144,24 +161,26 @@ export function MessageBody({
         {shown}
       </p>
 
-      {(overflows || open) && (
-        <button
-          type="button"
-          className="message__toggle"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? "Show less" : "Show whole email"}
-        </button>
-      )}
+      <div className="message__foot">
+        {(overflows || open) && (
+          <button
+            type="button"
+            className="message__toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? "Show less" : "Show whole email"}
+          </button>
+        )}
 
-      {note && <p className="message__note">{note}</p>}
+        {note && <p className="message__note">{note}</p>}
 
-      {body.status === "ready" && body.body.attachments.length > 0 && (
-        <p className="message__note">
-          Attachments (not downloaded): {body.body.attachments.join(", ")}
-        </p>
-      )}
+        {body.status === "ready" && body.body.attachments.length > 0 && (
+          <p className="message__note">
+            Attachments (not downloaded): {body.body.attachments.join(", ")}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

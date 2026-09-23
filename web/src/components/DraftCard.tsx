@@ -10,31 +10,45 @@
  * So this no longer invents its own actions. It renders the same `replyActions` set through the
  * same `ActionBar` as every other row, which means one definition of what you can do with a
  * message and one place to change it. The capability comes from the write desk, so a grant that
- * cannot send falls back to the Gmail link exactly as it does elsewhere.
+ * cannot send falls back to the Gmail link exactly as it does elsewhere. A bundle is not a
+ * message, so it gets `bundleActions` instead (see `draftActions`).
  */
 
 import type { Draft } from "../api/client";
 import { useWriteDesk } from "../compose/WriteDesk";
 import { ActionBar } from "../surfaces/ActionBar";
-import { NO_WRITES, replyActions } from "../surfaces/actions";
+import { NO_WRITES, draftActions } from "../surfaces/actions";
 import "./draft-card.css";
 
 interface DraftCardProps {
   draft: Draft;
+  /**
+   * Not the lead card in its column: its primary action renders as a secondary button, so a
+   * column of drafts has one filled "Reply" rather than one per card.
+   */
+  quiet?: boolean;
 }
 
-export function DraftCard({ draft }: DraftCardProps) {
+export function DraftCard({ draft, quiet = false }: DraftCardProps) {
   // Null outside a provider — a detached window or a test renders the card with the actions
   // falling back to their Google links rather than throwing.
   const desk = useWriteDesk();
   const capability = desk?.capability ?? NO_WRITES;
 
   return (
-    <article className="draftcard" aria-label={`Draft: ${draft.title}`}>
+    // A key scope: R and O act on this card while focus is anywhere inside it. `tabIndex={-1}`
+    // lets a click on the card's text give it that focus without adding a Tab stop.
+    <article
+      className={quiet ? "draftcard draftcard--quiet" : "draftcard"}
+      aria-label={`Draft: ${draft.title}`}
+      data-keyscope
+      tabIndex={-1}
+    >
       <div className="draftcard__title">{draft.title}</div>
       <p className="draftcard__body">{draft.summary}</p>
       <div className="draftcard__actions">
-        <ActionBar actions={replyActions(draft, capability)} subject={draft.title} />
+        {/* By kind: a bundle has nothing to reply to, so it never gets a Reply. */}
+        <ActionBar actions={draftActions(draft, capability)} subject={draft.title} density="compact" />
       </div>
     </article>
   );

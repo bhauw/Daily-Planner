@@ -81,6 +81,27 @@ final class ClaudeCodeReplyWriterTests: XCTestCase {
         )
     }
 
+    func testAChildThatClosesItsOutputButLingersIsStillKilledAtTheDeadline() async {
+        // The window `waitUntilExit()` used to leave open: output fully read, watchdog already
+        // cancelled, child still alive. That hung the suite outright. The watchdog now stays
+        // armed until the child has actually exited.
+        let start = Date()
+        await assertThrows(.unavailable) {
+            try await self.writer(
+                "/bin/sh", timeout: .milliseconds(300), arguments: ["-c", "exec >&-; sleep 30"]
+            ).run(prompt: "x")
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+    }
+
+    func testManyRunsInARowAllReturn() async throws {
+        // The hang was intermittent. Twenty-five back-to-back runs is enough to have caught it.
+        for index in 0..<25 {
+            let echoed = try await writer("/bin/cat").run(prompt: "run \(index)")
+            XCTAssertEqual(echoed, "run \(index)")
+        }
+    }
+
     func testAnEndlessTalkerIsCutOffRatherThanReadIntoMemory() async {
         // `yes` prints forever. The ceiling has to apply DURING the read — checking the size
         // after `readToEnd` would mean growing without bound first and only then complaining.

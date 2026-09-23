@@ -17,10 +17,9 @@
 import { useMemo } from "react";
 import type { PlannerEvent } from "../contract";
 import { presentationFor, colorForCategory, Dayline, Button } from "../contract";
-import { dayKey as dayKeyOf } from "./tz";
-import { isFlexible, fixedReason, eventInterval, fmtMinutes } from "./scheduling";
+import { isFlexible, fixedReason, eventInterval, intervalOnDay, fmtMinutes } from "./scheduling";
 import { categoryForTitle, type CalendarState } from "./roles";
-import type { Proposal } from "./proposals";
+import { whenLabel, type Proposal } from "./proposals";
 import { WINDOW_START, WINDOW_END } from "./layout";
 
 interface DaylineDetailProps {
@@ -31,7 +30,8 @@ interface DaylineDetailProps {
   roleOf: (e: PlannerEvent) => "planning" | "excluded";
   showExcluded: boolean;
   proposals: Map<string, Proposal>;
-  accepted: Set<string>;
+  /** Proposals accepted locally; the events handed in already sit at the accepted time. */
+  accepted: Map<string, Proposal>;
   onPropose: (event: PlannerEvent, dayKey: string, toStart: number) => void;
   onApprove: (id: string) => void;
   onDiscard: (id: string) => void;
@@ -58,9 +58,10 @@ export function DaylineDetail({
   onToggleRole,
   onExplainFixed,
 }: DaylineDetailProps) {
-  const planningDay = useMemo(() => planning.filter((e) => dayKeyOf(e.start) === dayKey), [planning, dayKey]);
+  // Every event on the day, including one that started the day before and runs into it.
+  const planningDay = useMemo(() => planning.filter((e) => intervalOnDay(e, dayKey) != null), [planning, dayKey]);
   const excludedDay = useMemo(
-    () => events.filter((e) => dayKeyOf(e.start) === dayKey && roleOf(e) === "excluded"),
+    () => events.filter((e) => intervalOnDay(e, dayKey) != null && roleOf(e) === "excluded"),
     [events, dayKey, roleOf],
   );
   const flexibleDay = useMemo(() => planningDay.filter(isFlexible), [planningDay]);
@@ -84,7 +85,10 @@ export function DaylineDetail({
     const iv = eventInterval(e);
     if (!iv) return;
     const duration = iv.end - iv.start;
-    onPropose(e, dayKey, clampStart(currentStart(e) + delta, duration));
+    // Nudge on the day the proposal is already going to. Passing this view's day silently
+    // dragged a cross-day proposal back onto the source day.
+    const target = proposals.get(e.id)?.dayKey ?? dayKey;
+    onPropose(e, target, clampStart(currentStart(e) + delta, duration));
   }
 
   return (
@@ -203,14 +207,14 @@ export function DaylineDetail({
                     <div className="proposal__diff">
                       <div className="diffcol">
                         <span className="diffcol__label">Now</span>
-                        <span className="num diffcol__time">{fmtMinutes(proposal.fromStart)}</span>
+                        <span className="num diffcol__time">{whenLabel(proposal.fromDayKey, proposal.fromStart)}</span>
                       </div>
                       <span className="diff__arrow" aria-hidden="true">
                         →
                       </span>
                       <div className="diffcol">
                         <span className="diffcol__label">Proposed</span>
-                        <span className="num diffcol__time">{fmtMinutes(proposal.toStart)}</span>
+                        <span className="num diffcol__time">{whenLabel(proposal.dayKey, proposal.toStart)}</span>
                       </div>
                     </div>
                     {proposal.collision && <p className="proposal__warn">⚠ {proposal.collision}</p>}

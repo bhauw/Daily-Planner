@@ -107,12 +107,156 @@ describe("token contrast", () => {
   });
 });
 
+/** Mix `a` over `b` at share `p` (0-1), per channel in sRGB — what color-mix(in srgb) does. */
+function mix(a: string, b: string, p: number): string {
+  const rgb = (h: string) => {
+    const n = Number.parseInt(h.replace("#", ""), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const [x, y] = [rgb(a), rgb(b)];
+  return `#${x.map((v, i) => Math.round(v * p + y[i] * (1 - p)).toString(16).padStart(2, "0")).join("")}`;
+}
+
+describe("interaction and chrome tokens", () => {
+  it("small text stays legible on the hover and pressed steps", () => {
+    for (const depth of ["--surface-hover", "--surface-pressed", "--chrome"]) {
+      for (const ink of ["--text", "--text-2", "--accent-text"]) {
+        const ratio = contrast(token(ink), token(depth));
+        expect({ pair: `${ink} on ${depth}`, pass: ratio >= 4.5 }).toEqual({
+          pair: `${ink} on ${depth}`,
+          pass: true,
+        });
+      }
+    }
+  });
+
+  it("the hover step is a visible step up from --bg", () => {
+    // The old hover (--surface on --bg) was 1.10:1 and read as nothing happening.
+    expect(contrast(token("--surface-hover"), token("--bg"))).toBeGreaterThan(1.15);
+    expect(contrast(token("--surface-pressed"), token("--bg"))).toBeGreaterThan(
+      contrast(token("--surface-hover"), token("--bg")),
+    );
+  });
+
+  it("pressed primary is visibly darker than hover, and still clears 4.5:1", () => {
+    const hover = contrast(token("--accent-fill-ink"), token("--accent-fill-hover"));
+    const active = contrast(token("--accent-fill-ink"), token("--accent-fill-active"));
+    expect(active - hover).toBeGreaterThan(1);
+    expect(active).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("disabled controls still clear 4.5:1 although WCAG exempts them", () => {
+    expect(contrast(token("--disabled-ink"), token("--disabled-bg"))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("the safety rail's amber marks and ink clear their thresholds on --chrome", () => {
+    expect(contrast(token("--warn"), token("--chrome"))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token("--text"), token("--chrome"))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("category tag on its tint", () => {
+  const tint = Number.parseFloat(token("--tag-tint")) / 100;
+  // Every ink category.ts can hand a .tag.
+  const INKS = [
+    "--cat-school-ink",
+    "--cat-deadline",
+    "--cat-finance",
+    "--cat-extracurricular",
+    "--cat-career",
+    "--cat-personal-ink",
+    "--cat-neutral-ink",
+  ];
+  const SURFACES = [...DEPTHS, "--surface-hover"];
+
+  it("reads the tint from tokens.css", () => {
+    expect(tint).toBeGreaterThan(0);
+    expect(tint).toBeLessThanOrEqual(0.1);
+  });
+
+  it("every category ink clears 4.5:1 on its own tint over every surface", () => {
+    for (const ink of INKS) {
+      for (const depth of SURFACES) {
+        const fg = token(ink);
+        const ratio = contrast(fg, mix(fg, token(depth), tint));
+        expect({ pair: `${ink} tag on ${depth}`, pass: ratio >= 4.5 }).toEqual({
+          pair: `${ink} tag on ${depth}`,
+          pass: true,
+        });
+      }
+    }
+  });
+
+  it(".tag paints that tint, in sans, without an outline", () => {
+    const badge = readFileSync(join(SRC, "components/badge.css"), "utf8");
+    const tag = badge.slice(badge.indexOf(".tag {"), badge.indexOf("}", badge.indexOf(".tag {")));
+    expect(tag).toMatch(/color-mix\(in srgb, currentColor var\(--tag-tint\), transparent\)/);
+    expect(tag).toMatch(/font-family:\s*var\(--font-sans\)/);
+    expect(tag).not.toMatch(/border:/);
+  });
+});
+
+describe("a done task is dimmed by colour, not opacity", () => {
+  // An audit found `.task--done { opacity: 0.6; }` multiplying every descendant's alpha,
+  // including the category tag and the due-date/"Done" label, dragging both below 4.5:1
+  // (measured: .task--done .tag 2.81:1, .task--done .task__due 2.69:1). Done rows are dimmed
+  // through explicit tokens instead — the card recedes onto --surface (tasks.css) and the tag's
+  // ink is muted to --text-2 (TaskCard.tsx) — so nothing here depends on a scaled-down alpha.
+  const tasks = readFileSync(join(SRC, "workspaces/tasks/tasks.css"), "utf8");
+  const doneBlock = tasks.slice(tasks.indexOf(".task--done {"), tasks.indexOf("}", tasks.indexOf(".task--done {")));
+
+  it("never dims the row with opacity", () => {
+    expect(doneBlock).not.toMatch(/opacity/);
+  });
+
+  it("the done tag's muted ink clears 4.5:1 on its own tint, on --surface (the done card's background)", () => {
+    const tint = Number.parseFloat(token("--tag-tint")) / 100;
+    const ink = token("--text-2");
+    const ratio = contrast(ink, mix(ink, token("--surface"), tint));
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("the due-date/\"Done\" label clears 4.5:1 on --surface, the done card's background", () => {
+    expect(contrast(token("--text-2"), token("--surface"))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("default-variant button borders clear 3:1 non-text contrast", () => {
+  // axe's non-text pass flagged .btn--default ("Reply", "Find in Gmail", "Copy address")
+  // repeatedly around fillRatio/bRatio ~1.1-1.2 against the surrounding page (need 3:1) — the
+  // base .btn border (--border, 1.34:1 on --surface by its own token comment) was too close in
+  // luminance to read as a boundary at all (WCAG 1.4.11 Non-text Contrast — audit finding #10/#11).
+  const SURROUNDING = ["--bg", "--chrome", "--surface", "--surface-2", "--surface-hover", "--surface-pressed"];
+
+  it("--btn-border clears 3:1 against every background a default button sits on", () => {
+    for (const bg of SURROUNDING) {
+      const ratio = contrast(token("--btn-border"), token(bg));
+      expect({ pair: `--btn-border on ${bg}`, pass: ratio >= 3 }).toEqual({
+        pair: `--btn-border on ${bg}`,
+        pass: true,
+      });
+    }
+  });
+
+  it(".btn--default actually paints its border in --btn-border, not the low-contrast --border", () => {
+    const button = readFileSync(join(SRC, "components/button.css"), "utf8");
+    const rule = button.slice(button.indexOf(".btn--default"));
+    const block = rule.slice(0, rule.indexOf("}"));
+    expect(block).toMatch(/border-color:\s*var\(--btn-border\)/);
+  });
+});
+
 describe("stylesheets honour the token rules", () => {
   it("never fills a primary button with --accent", () => {
     const button = readFileSync(join(SRC, "components/button.css"), "utf8");
     const primary = button.slice(button.indexOf(".btn--primary"));
     expect(primary).not.toMatch(/background:\s*var\(--accent\)/);
     expect(primary).toMatch(/background:\s*var\(--accent-fill\)/);
+  });
+
+  it("never writes a raw hex background in the shell layout", () => {
+    const shell = readFileSync(join(SRC, "shell/three-column.css"), "utf8");
+    expect(shell).not.toMatch(/background:\s*#/);
   });
 
   it("uses --text-3 as a text colour only on exempt selectors", () => {

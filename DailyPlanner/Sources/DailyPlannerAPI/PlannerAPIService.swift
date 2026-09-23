@@ -32,6 +32,8 @@ public struct PlannerAPIService: Sendable {
     private let summarizer: (any PlannerMailSummarizing)?
     /// Decides whether a body reads as sensitive enough never to be sent to a model.
     private let contentClassifier: any GoogleContentClassifying
+    /// The user's own first name, for signing drafted replies. Nil signs off without one.
+    private let signOffName: String?
     /// What the connected grant permits. Nil when no account is connected.
     private let capability: GoogleGrantedCapability?
     private let schedulePolicy: LocalSchedulePolicy
@@ -78,6 +80,7 @@ public struct PlannerAPIService: Sendable {
         self.mailBodyReader = nil
         self.summarizer = nil
         self.contentClassifier = DeterministicGoogleContentPrivacyClassifier()
+        self.signOffName = nil
         self.capability = nil
         self.schedulePolicy = LocalSchedulePolicy.v1
         self.clock = FixedClock(referenceDate)
@@ -107,6 +110,7 @@ public struct PlannerAPIService: Sendable {
         mailBodyReader: (any PlannerMailBodyReading)? = nil,
         summarizer: (any PlannerMailSummarizing)? = nil,
         contentClassifier: any GoogleContentClassifying = DeterministicGoogleContentPrivacyClassifier(),
+        signOffName: String? = nil,
         capability: GoogleGrantedCapability? = nil
     ) {
         self.planning = PlanningPreviewWorkflow(
@@ -126,6 +130,7 @@ public struct PlannerAPIService: Sendable {
         self.mailBodyReader = mailBodyReader
         self.summarizer = summarizer
         self.contentClassifier = contentClassifier
+        self.signOffName = signOffName
         self.capability = capability
         self.schedulePolicy = LocalSchedulePolicy.v1
         self.clock = clock
@@ -388,6 +393,7 @@ public struct PlannerAPIService: Sendable {
                 snippet: item.summary,
                 intent: intent,
                 customInstruction: request.instruction,
+                signOffName: signOffName,
                 isPrivate: item.isPrivate
             )
         } catch PlannerDraftingError.messageIsPrivate {

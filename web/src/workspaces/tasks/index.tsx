@@ -14,10 +14,12 @@ import { useReducer, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import type { PlannerEvent, TaskItem, TaskList, WorkspaceProps } from "../contract";
 import { ColumnHeader, ConnectionState, EmptyState, useAsync } from "../contract";
+import { BoardScroller } from "./BoardScroller";
 import { ListColumns } from "./ListColumns";
 import { QuickCapture } from "./QuickCapture";
-import { TimeBlockDrag, type ComposeTarget } from "./TimeBlockDrag";
-import { orderLists, routeCapture } from "./routing";
+import { TimeBlockDrag, blockEvents, type ComposeTarget } from "./TimeBlockDrag";
+import { firstOpening, gapsFor } from "./insertion";
+import { categoryForList, orderLists, routeCapture } from "./routing";
 import {
   initialProposalState,
   nextId,
@@ -32,10 +34,10 @@ import "./tasks.css";
 // The dayline's planning window (matches the shared Dayline default 09:00–21:00).
 const WINDOW_START = 9 * 60;
 const WINDOW_END = 21 * 60;
-// A calm default start (11:00) for the keyboard "Block time" path.
-const DEFAULT_START = 11 * 60;
-// The keyboard path has no gap to read a length from, so it opens on an hour.
-const DEFAULT_DURATION = 60;
+// Only when the day has no free gap at all does the keyboard path fall back to a fixed
+// opening — and the compose form then names what it overlaps.
+const FALLBACK_START = 11 * 60;
+const FALLBACK_DURATION = 60;
 
 interface Loaded {
   lists: TaskList[];
@@ -92,6 +94,16 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
   const [compose, setCompose] = useState<ComposeTarget | null>(null);
   // The task currently being dragged; read on drop to build the block target.
   const dragRef = useRef<{ task: TaskItem; list: string } | null>(null);
+  // The control that opened the compose form, so cancelling or proposing hands focus back to
+  // it instead of dropping it on <body>.
+  const returnFocus = useRef<HTMLElement | null>(null);
+
+  function closeCompose() {
+    setCompose(null);
+    const el = returnFocus.current;
+    returnFocus.current = null;
+    if (el && el.isConnected) el.focus();
+  }
 
   const listNames = lists.map((l) => l.name);
   // Planning lists map one-to-one to calendars this round; the compose form
@@ -117,8 +129,15 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
   }
 
   // Keyboard-accessible path to a focus block (the WCAG alternative to dragging).
+  //
+  // It opens on the first free gap — the same gaps a drag drops into, counting blocks already
+  // proposed — so pressing the button never defaults onto something that is already there.
   function onBlockTime(task: TaskItem, fromList: string) {
-    openCompose(task, fromList, DEFAULT_START, DEFAULT_DURATION);
+    const live = state.proposals.filter((p): p is BlockProposal => p.kind === "block");
+    const gaps = gapsFor([...schedule, ...blockEvents(live)], WINDOW_START, WINDOW_END);
+    const at = firstOpening(gaps);
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    openCompose(task, fromList, at?.startMin ?? FALLBACK_START, at?.durationMin ?? FALLBACK_DURATION);
   }
 
   // Drag path: a task was dropped into a gap, which supplied both the start and
@@ -145,7 +164,7 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
       calendar,
     };
     dispatch({ type: "add", proposal });
-    setCompose(null);
+    closeCompose();
   }
 
   function onProposeMove(task: TaskItem, fromList: string, toList: string) {
@@ -179,6 +198,7 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
       reasons: routed.reasons,
       needsCalendar: routed.needsCalendar,
       needsEmail: routed.needsEmail,
+      needsListChoice: routed.needsListChoice,
     };
     dispatch({ type: "add", proposal });
   }
@@ -193,6 +213,11 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
 
   return (
     <div className={["tasks", detached ? "tasks--detached" : ""].filter(Boolean).join(" ")}>
+      {/*
+       * No page <h1> here either — the outermost heading was ColumnHeader's h3 ("Lists & focus
+       * blocks"). sr-only: that title already reads as the page's name on screen.
+       */}
+      <h1 className="sr-only">Tasks</h1>
       <header className="tasks__bar">
         <ColumnHeader
           eyebrow="Tasks"
@@ -201,19 +226,18 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
         />
         <QuickCapture
           captures={captures}
+          lists={listNames}
           onCapture={onCapture}
+          onPickList={(id, listName) =>
+            dispatch({ type: "pickList", id, listName, category: categoryForList(listName) })
+          }
           onResolve={resolve}
           onDismiss={remove}
         />
       </header>
 
       <div className="tasks__grid">
-        <div
-          className="tasks__lists scroll-x"
-          role="region"
-          aria-label="Task lists"
-          tabIndex={0}
-        >
+        <BoardScroller>
           <ListColumns
             lists={lists}
             day={day}
@@ -223,7 +247,7 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
             onResolve={resolve}
             onDragStartTask={onDragStartTask}
           />
-        </div>
+        </BoardScroller>
 
         <aside className="tasks__timeline scroll-y" aria-label="Focus time-blocking">
           <TimeBlockDrag
@@ -235,7 +259,7 @@ function Board({ data, detached }: { data: Loaded; detached: boolean }) {
             windowEnd={WINDOW_END}
             onDropStart={onDropStart}
             onCommit={commitBlock}
-            onCancel={() => setCompose(null)}
+            onCancel={closeCompose}
             onResolve={resolve}
             onRemove={remove}
           />

@@ -8,33 +8,34 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "../contract";
+import { Button, CAPTURE_KEY, isKey, keyLabel, shouldIgnoreKey } from "../contract";
 import type { CaptureProposal } from "./machine";
-import { statusLabel } from "./machine";
+import { LOCAL_ONLY_TASKS, statusLabel } from "./machine";
 import { formatDueDate } from "./routing";
 import { PlusIcon } from "./icons";
 
 interface QuickCaptureProps {
   captures: CaptureProposal[];
+  /** Every list, for picking one when routing found no clear match. */
+  lists: string[];
   onCapture: (text: string) => void;
+  onPickList: (id: string, listName: string) => void;
   onResolve: (id: string, status: "approved" | "rejected") => void;
   onDismiss: (id: string) => void;
 }
 
-export function QuickCapture({ captures, onCapture, onResolve, onDismiss }: QuickCaptureProps) {
+export function QuickCapture({ captures, lists, onCapture, onPickList, onResolve, onDismiss }: QuickCaptureProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   // Local-only follow-up answers layered over each proposal's suggestion.
   const [followups, setFollowups] = useState<Record<string, { calendar: boolean; email: boolean }>>({});
 
   // Keyboard shortcut: "c" focuses the capture input from anywhere in the
-  // workspace, unless the person is already typing in a field.
+  // workspace, unless the person is already typing in a field. The key and the
+  // "typing" rule come from the shell's registry, which the "?" overlay lists.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "c" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = e.target as HTMLElement | null;
-      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
-      if (typing) return;
+      if (!isKey(e, CAPTURE_KEY) || shouldIgnoreKey(e)) return;
       e.preventDefault();
       inputRef.current?.focus();
     }
@@ -86,7 +87,8 @@ export function QuickCapture({ captures, onCapture, onResolve, onDismiss }: Quic
         </Button>
       </form>
       <p id="capture-hint" className="capture__hint">
-        Press <kbd className="num">C</kbd> to capture from anywhere. Capture proposes — it never creates.
+        Press <kbd className="num">{keyLabel(CAPTURE_KEY)}</kbd> to capture from anywhere in Tasks. Capture
+        proposes — it never creates.
       </p>
 
       {pending.length > 0 && (
@@ -104,13 +106,32 @@ export function QuickCapture({ captures, onCapture, onResolve, onDismiss }: Quic
                 <dl className="proposal__facts">
                   <div className="proposal__fact">
                     <dt>List</dt>
-                    <dd>{c.listName}</dd>
+                    <dd>{c.listName || "No clear match — pick a list"}</dd>
                   </div>
                   <div className="proposal__fact">
                     <dt>Due</dt>
                     <dd className="num">{due ?? "No due date"}</dd>
                   </div>
                 </dl>
+
+                {(c.needsListChoice || !c.listName) && (
+                  <label className="proposal__pick">
+                    <span>Which list?</span>
+                    <select
+                      value={c.listName}
+                      onChange={(e) => e.target.value && onPickList(c.id, e.target.value)}
+                    >
+                      <option value="" disabled>
+                        Pick a list…
+                      </option>
+                      {lists.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
                 <div className="proposal__why">
                   <div className="proposal__why-head">Why it routed this way</div>
@@ -142,13 +163,20 @@ export function QuickCapture({ captures, onCapture, onResolve, onDismiss }: Quic
                 </fieldset>
 
                 <div className="proposal__actions">
-                  <Button size="sm" variant="primary" onClick={() => onResolve(c.id, "approved")}>
+                  {/* No list, no approval: guessing one would be the silent assumption this
+                      card exists to prevent. */}
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!c.listName}
+                    onClick={() => onResolve(c.id, "approved")}
+                  >
                     Approve
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => onResolve(c.id, "rejected")}>
                     Discard
                   </Button>
-                  <span className="proposal__note">Approving keeps it local — nothing is sent this round.</span>
+                  <span className="proposal__note">Google Tasks is read-only here — approving saves it locally only.</span>
                 </div>
               </article>
             );
@@ -160,8 +188,13 @@ export function QuickCapture({ captures, onCapture, onResolve, onDismiss }: Quic
         <ul className="capture__log" aria-label="Resolved captures">
           {resolved.map((c) => (
             <li className="capture__log-row" key={c.id}>
-              <span className={`proposal__status is-${c.status}`}>{statusLabel(c.status)}</span>
-              <span className="capture__log-text">{c.text}</span>
+              <span className={`proposal__status is-${c.status}`}>
+                {c.status === "approved" ? LOCAL_ONLY_TASKS : statusLabel(c.status)}
+              </span>
+              <span className="capture__log-text">
+                {c.text}
+                {c.status === "approved" && c.listName ? ` → ${c.listName}` : ""}
+              </span>
               <button type="button" className="capture__log-dismiss" onClick={() => onDismiss(c.id)}>
                 <span className="sr-only">Dismiss {c.text}</span>
                 <span aria-hidden="true">×</span>

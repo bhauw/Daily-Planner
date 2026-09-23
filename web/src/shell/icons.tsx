@@ -42,6 +42,15 @@ export const FocusIcon = base(
   </>,
 );
 
+/* A checklist rising to a clock hand: the plan for the day. */
+export const PlanIcon = base(
+  <>
+    <path d="M2.5 4h6M2.5 8h4M2.5 12h4" />
+    <circle cx="11.5" cy="10" r="3" />
+    <path d="M11.5 8.6V10l1 .7" />
+  </>,
+);
+
 export const DigestIcon = base(<path d="M2 4h12M2 8h12M2 12h7" />);
 
 export const MailIcon = base(

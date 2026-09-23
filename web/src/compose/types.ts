@@ -6,6 +6,21 @@
  * row is testable without rendering anything.
  */
 
+import type { PlannerEvent, ReplyIntent } from "../api/client";
+
+/**
+ * The intent a TYPED instruction goes out on.
+ *
+ * The client's intents are a closed set with no "custom", and adding one would change the wire
+ * contract. It does not need one: the engine puts a typed instruction IN PLACE OF the intent's own
+ * wording (`customInstruction ?? intent.instruction`, ReplyDraftingPorts.swift), so the intent
+ * is only a label on the request. Both drafting surfaces sent "accept" as that label, so "politely
+ * decline" went out tagged as a yes. `acknowledge` is the one intent that commits to nothing
+ * ("Do not commit to anything"), so even an engine that fell back to the intent could never turn
+ * his no into a yes.
+ */
+export const FREE_FORM_INTENT: ReplyIntent = "acknowledge";
+
 export interface ComposePrefill {
   to: string[];
   cc?: string[];
@@ -25,7 +40,18 @@ export interface ComposePrefill {
    * classification rather than against anything this client passes along.
    */
   draftFrom?: string;
+  /**
+   * The inbox item this answers, by its draft id. Handed back on a successful send so the shell
+   * can drop that item from every list at once, rather than leaving an answered message sitting
+   * there as if nothing happened. Client-side only; never sent.
+   */
+  answers?: string;
 }
+
+/** What a successful write did, so the host can reflect it before the re-read lands. */
+export type Written =
+  | { kind: "mail"; answers?: string }
+  | { kind: "event" };
 
 /**
  * Naming an event that already exists, so the desk MOVES it instead of creating one.
@@ -54,4 +80,9 @@ export interface SchedulePrefill {
    * no field at all.
    */
   move?: MoveTarget;
+  /**
+   * What is already on the calendar around this time, so the form can name an overlap before
+   * it is pressed. Read-side context only — it is never sent.
+   */
+  busy?: PlannerEvent[];
 }

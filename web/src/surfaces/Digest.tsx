@@ -28,7 +28,7 @@ import { colorForCategory, presentationFor } from "../lib/category";
 import { durationMinutes, formatLongDay, formatRange, formatTime } from "../lib/format";
 import { EmptyState } from "../components/Column";
 import { relative } from "./priority";
-import { REASON_LABEL, groupMail } from "./mailTriage";
+import { REASON_LABEL, groupMail, waitingOn } from "./mailTriage";
 import { ActionBar } from "./ActionBar";
 import { NO_WRITES, eventActions, replyActions, taskActions, type ActionCapability } from "./actions";
 import "./digest.css";
@@ -143,7 +143,8 @@ export function Digest({
 
   // The workload line. Mail first, because that is what the surface now leads with.
   const summary = [
-    mail.unreadCount > 0 ? count(mail.unreadCount, "unread") : count(replies.length, "message"),
+    // "unread" is its own plural — the default "s" made it "4 unreads".
+    mail.unreadCount > 0 ? count(mail.unreadCount, "unread", "unread") : count(replies.length, "message"),
     mail.urgent.length > 0 ? `${mail.urgent.length} to read first` : "",
     count(schedule.length, "event"),
     count(dueTasks.length, "task due"),
@@ -157,13 +158,12 @@ export function Digest({
   const noMail = mail.urgent.length === 0 && mail.groups.length === 0;
 
   /*
-   * Three regions, and the day header is not one of them.
+   * One scroller with a pinned header.
    *
-   * The whole surface used to be a single scroller, so reading down the inbox pushed the date
-   * and the workload line off the top — the two things you want to still be able to see while
-   * you decide whether a reply can wait. The header is pinned now, the mail list scrolls on its
-   * own, and the workload gets its own pane rather than riding along underneath the list: a
-   * long inbox would otherwise bury the schedule several screens down.
+   * Reading down the inbox used to push the date and summary off the top, so the header is
+   * sticky. The inbox and the day's load were once two nested scroll panes, the load capped at
+   * 40%; that cap sliced the last visible reply in half at every window size, so they are now
+   * consecutive bands of one reading column (see digest.css).
    */
   return (
     <div className="digest">
@@ -213,7 +213,7 @@ export function Digest({
         {schedule.length > 0 && (
           <Section title="Today" count={schedule.length}>
             {schedule.map((event) => (
-              <EventDetail key={event.id} event={event} nowMs={nowMs} capability={capability} />
+              <EventDetail key={event.id} event={event} nowMs={nowMs} capability={capability} around={week?.events ?? preview.schedule} />
             ))}
           </Section>
         )}
@@ -228,6 +228,8 @@ export function Digest({
                 nowMs={nowMs}
                 todayKey={todayKey}
                 capability={capability}
+                clock={clock}
+                schedule={preview.schedule}
               />
             ))}
           </Section>
@@ -245,7 +247,7 @@ export function Digest({
               <div key={day.key} className="digest__day">
                 <div className="digest__daylabel">{day.label}</div>
                 {day.events.map((event) => (
-                  <EventDetail key={event.id} event={event} nowMs={nowMs} capability={capability} />
+                  <EventDetail key={event.id} event={event} nowMs={nowMs} capability={capability} around={week?.events ?? preview.schedule} />
                 ))}
               </div>
             ))
@@ -293,7 +295,8 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <details className="drow">
+    // A key scope: once open, its action bar's keys act on this row and no other.
+    <details className="drow" data-keyscope tabIndex={-1}>
       <summary className="drow__summary" aria-label={label}>
         <span className="drow__chip" style={{ background: color }} aria-hidden="true" />
         <span className="drow__body">
@@ -328,10 +331,13 @@ function EventDetail({
   event,
   nowMs,
   capability,
+  around,
 }: {
   event: PlannerEvent;
   nowMs: number;
   capability: ActionCapability;
+  /** Everything on the calendar, so "Move it" can name what a new time overlaps. */
+  around: PlannerEvent[];
 }) {
   const p = presentationFor(event);
   const range = formatRange(event.start, event.end);
@@ -352,7 +358,7 @@ function EventDetail({
       {event.location && <Field label="Where" value={event.location} />}
       <Field label="Category" value={p.label} />
       {event.due && <Field label="Due" value={formatTime(event.due)} />}
-      <ActionBar actions={eventActions(event, capability)} subject={event.title} />
+      <ActionBar actions={eventActions(event, capability, around)} subject={event.title} />
     </Row>
   );
 }
@@ -372,6 +378,8 @@ function ReplyDetail({
   // Only the overrides get a badge. Putting one on every row would make the four that
   // actually jumped the queue indistinguishable from the rest.
   const badge = draft.band === "urgent" && draft.reason ? REASON_LABEL[draft.reason] : undefined;
+  // Derived, not hardcoded: a statement or a no-reply alert is not waiting on a reply.
+  const waiting = waitingOn(draft);
 
   return (
     <Row
@@ -388,7 +396,7 @@ function ReplyDetail({
       {draft.sender && <Field label="From" value={draft.sender} />}
       {age && <Field label="Arrived" value={age} />}
       {draft.summary && <Field label="What it says" value={draft.summary} />}
-      <Field label="Waiting on" value="Your reply" />
+      {waiting && <Field label="Waiting on" value={waiting} />}
       <ActionBar actions={replyActions(draft, capability)} subject={draft.title} />
     </Row>
   );
@@ -400,12 +408,17 @@ function TaskDetail({
   nowMs,
   todayKey,
   capability,
+  clock,
+  schedule,
 }: {
   task: TaskItem;
   list: string;
   nowMs: number;
   todayKey: string;
   capability: ActionCapability;
+  clock: Date;
+  /** Today's blocks, so the proposed slot is a free one before the due. */
+  schedule: PlannerEvent[];
 }) {
   const color = colorForCategory(task.category);
   const key = dayKey(task.due);
@@ -423,7 +436,7 @@ function TaskDetail({
       <Field label="List" value={list} />
       <Field label="Status" value={late ? "Overdue" : "Due today"} />
       {!Number.isNaN(dueMs) && <Field label="Deadline" value={relative(nowMs, dueMs)} />}
-      <ActionBar actions={taskActions(task, capability)} subject={task.title} />
+      <ActionBar actions={taskActions(task, capability, { now: clock, schedule })} subject={task.title} />
     </Row>
   );
 }

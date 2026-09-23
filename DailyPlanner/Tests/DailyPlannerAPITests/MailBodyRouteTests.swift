@@ -76,7 +76,8 @@ final class MailBodyRouteTests: XCTestCase {
     private func service(
         bodies: FakeBodies?,
         assistant: SpyAssistant? = nil,
-        inbox: [PlannerMailItem] = []
+        inbox: [PlannerMailItem] = [],
+        signOffName: String? = nil
     ) -> PlannerAPIService {
         PlannerAPIService(
             source: FakeSource(),
@@ -86,6 +87,7 @@ final class MailBodyRouteTests: XCTestCase {
             replyWriter: assistant,
             mailBodyReader: bodies,
             summarizer: assistant,
+            signOffName: signOffName,
             capability: .readWrite
         )
     }
@@ -140,6 +142,13 @@ final class MailBodyRouteTests: XCTestCase {
         XCTAssertTrue(sent.contains("Quick update about Thursday"), "the snippet is what drafting sends")
         XCTAssertFalse(sent.contains("BODY-ONLY-7f3a"), "the body must never reach a draft prompt")
         XCTAssertTrue(assistant.summarized.isEmpty, "drafting is not a summary")
+    }
+
+    func testDraftsAreSignedWithTheNameTheEngineWasGiven() async {
+        let assistant = SpyAssistant()
+        _ = await router(service(bodies: nil, assistant: assistant, inbox: [item("m1")], signOffName: "Braxton"))
+            .respond(to: post("/api/mail/draft", #"{"messageId":"m1","intent":"accept"}"#))
+        XCTAssertEqual(assistant.drafted.first?.signOffName, "Braxton")
     }
 
     func testReadingABodySendsNothingToTheAssistant() async {

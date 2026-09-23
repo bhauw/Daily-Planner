@@ -6,7 +6,7 @@
  */
 
 import type { PlannerEvent } from "../contract";
-import { eventInterval } from "./scheduling";
+import { eventInterval, intervalOnDay } from "./scheduling";
 
 export const WINDOW_START = 7 * 60; // 07:00 — shows the day plus the 6–8 PM fallback band
 export const WINDOW_END = 21 * 60; // 21:00
@@ -27,10 +27,11 @@ interface Item {
   end: number;
 }
 
-export function layoutColumns(events: PlannerEvent[]): Positioned[] {
+/** Lay out one day's events. With `key`, each event is its part on that day (multi-day aware). */
+export function layoutColumns(events: PlannerEvent[], key?: string): Positioned[] {
   const items: Item[] = [];
   for (const e of events) {
-    const iv = eventInterval(e);
+    const iv = key ? intervalOnDay(e, key) : eventInterval(e);
     if (!iv) continue;
     items.push({ event: e, start: iv.start, end: Math.max(iv.end, iv.start + 20) });
   }
@@ -88,8 +89,13 @@ export function layoutColumns(events: PlannerEvent[]): Positioned[] {
 
 /** Pixel geometry for a block within the WINDOW_START..WINDOW_END band. */
 export function blockGeometry(pos: Positioned): { top: number; height: number; leftPct: number; widthPct: number } {
-  const top = (pos.start - WINDOW_START) * PX_PER_MIN;
-  const height = Math.max(20, (pos.end - pos.start) * PX_PER_MIN);
+  // Clipped to the drawn band: a segment that runs past 21:00, or continues from before 07:00,
+  // draws to the edge instead of overflowing the grid. One wholly outside the band is pinned
+  // to the nearer edge at the minimum height, so it is still seen rather than silently gone.
+  const start = Math.min(Math.max(pos.start, WINDOW_START), WINDOW_END - 20);
+  const end = Math.min(pos.end, WINDOW_END);
+  const top = (start - WINDOW_START) * PX_PER_MIN;
+  const height = Math.max(20, (end - start) * PX_PER_MIN);
   const widthPct = 100 / pos.cols;
   const leftPct = pos.col * widthPct;
   return { top, height, leftPct, widthPct };

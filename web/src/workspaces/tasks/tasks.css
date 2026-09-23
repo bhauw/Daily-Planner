@@ -10,6 +10,10 @@
  */
 
 .tasks {
+  /* Column floor: at 1440 four lists fit beside the focus pane; below that the board scrolls. */
+  --tasklist-min: 216px;
+  /* Focus pane: 300px floor (1024-1366), 360px cap (1640+). */
+  --tasks-timeline-width: clamp(300px, 22vw, 360px);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -33,7 +37,23 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  /*
+   * The focus-block pane gives back width on smaller windows instead of eating the board: at a
+   * fixed 360px, 1440 left room for three and a half columns and cut "Personal" in half.
+   */
+  grid-template-columns: minmax(0, 1fr) var(--tasks-timeline-width);
+}
+
+/*
+ * The board. It is the only thing that scrolls sideways, and it scrolls INSIDE itself: the page
+ * never gets a horizontal scrollbar. When a column is out of view an edge fade and a chevron say
+ * so (see .tasks__edge) — a clipped card with no cue reads as a broken layout, not "there's more".
+ */
+.tasks__board {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 
 .tasks__lists {
@@ -41,16 +61,61 @@
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--space-8);
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--text-3) transparent;
 }
 .tasks__lists::-webkit-scrollbar {
   height: 10px;
 }
 .tasks__lists::-webkit-scrollbar-thumb {
-  background: var(--border);
+  /* --text-3, not --border: the thumb is the affordance, so it clears 3:1 against --bg. */
+  background: var(--text-3);
   border-radius: 5px;
   border: 3px solid var(--bg);
+}
+
+/* Edge cue: a fade over the clipped column plus a chevron that pages one column along. */
+.tasks__edge {
+  position: absolute;
+  top: 0;
+  bottom: 10px; /* stay off the scrollbar */
+  width: var(--space-16);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.tasks__edge--start {
+  left: 0;
+  justify-content: flex-start;
+  background: linear-gradient(to left, transparent, var(--bg));
+}
+.tasks__edge--end {
+  right: 0;
+  justify-content: flex-end;
+  background: linear-gradient(to right, transparent, var(--bg));
+}
+.tasks__edge-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: var(--touch-min);
+  margin: 0 var(--space-1);
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.tasks__edge-btn:hover {
+  background: var(--surface);
 }
 
 .tasks__timeline {
@@ -64,17 +129,41 @@
  * ==========================================================================*/
 
 .tasklists {
-  display: flex;
+  /*
+   * Columns share the width (1fr) down to a floor, and the board scrolls once they would go below
+   * it. The explicit width is what keeps the trailing padding: overflowing grid tracks spill past
+   * their container's padding box, so the last column would otherwise sit flush on the edge.
+   * --list-count is bound inline from the number of lists.
+   */
+  display: grid;
+  grid-template-columns: repeat(var(--list-count, 5), minmax(var(--tasklist-min), 1fr));
   gap: var(--space-4);
   height: 100%;
-  min-width: max-content; /* columns keep their width; the row scrolls instead */
+  width: max(
+    100%,
+    calc(
+      var(--list-count, 5) * var(--tasklist-min) + (var(--list-count, 5) - 1) * var(--space-4) +
+        2 * var(--space-8)
+    )
+  );
   padding: var(--space-6) var(--space-8);
+  /* A real <ul> now (was a div[role=list]) — list-style/margin reset, same as .compose__addrs. */
+  margin: 0;
+  list-style: none;
+}
+
+/* The grid item: <section class="tasklist"> moved one level deeper, into a <li>, when the
+   column became a real list item instead of role=listitem on the <section>. min-width: 0 has
+   to live on the actual grid child (the <li>) or the column can no longer shrink below its
+   content's width inside the track. */
+.tasklist__item {
+  min-width: 0;
 }
 
 .tasklist {
   position: relative;
-  flex: none;
-  width: 250px;
+  min-width: 0;
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -129,8 +218,15 @@
 .task[draggable="true"]:active {
   cursor: grabbing;
 }
+/*
+ * Dimmed by colour, not opacity: `opacity: 0.6` here used to multiply every descendant's
+ * alpha, including the category tag and the due-date/"Done" label, dragging both below 4.5:1
+ * (contrast.test.ts pins both). The card recedes onto --surface instead of --surface-2 — still
+ * a full-alpha, contrast-checked token — and the tag's ink is muted to --text-2 (TaskCard.tsx),
+ * since the tag's colour is set inline and a CSS opacity is the only thing that ever reached it.
+ */
 .task--done {
-  opacity: 0.6;
+  background: var(--surface);
 }
 
 .task__grip {
@@ -215,18 +311,57 @@
   gap: var(--space-3);
 }
 
+/*
+ * One compact row: "Block time" keeps its size and "Move to…" takes what is left, truncating
+ * rather than wrapping. Both used to be full-height stacked controls that doubled every card.
+ */
 .task__actions {
+  grid-column: 1 / -1; /* under the grip as well: the row needs the width */
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
+  margin-top: var(--space-1);
+}
+.task__actions > .btn {
+  flex: none;
 }
 
 .task__move {
-  display: inline-flex;
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 120px;
 }
-.task__move-select,
+.task__move-select {
+  /* Sized to its own "Move to…" label, not its widest option ("Extracurricular"). */
+  width: 100%;
+  min-width: 0;
+  min-height: 26px; /* the height of a .btn--sm beside it */
+  /* The native arrow reserves ~24px; our own caret needs half that, which is "Move to…" whole. */
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 calc(var(--space-4) + 12px) 0 var(--space-4);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.task__move-caret {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--text-2);
+  pointer-events: none;
+}
 .compose__select {
   min-height: 36px;
   padding: var(--space-2) var(--space-5);
@@ -237,9 +372,6 @@
   font: inherit;
   font-size: var(--text-xs);
   cursor: pointer;
-}
-.task__move-select {
-  max-width: 130px;
 }
 
 /* ============================================================================
@@ -341,6 +473,13 @@ kbd {
   display: flex;
   gap: var(--space-8);
   margin: 0;
+}
+.proposal__pick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-2);
 }
 .proposal__fact dt {
   font-size: var(--text-2xs);
@@ -502,8 +641,10 @@ kbd {
   color: var(--text-2);
   line-height: var(--leading-normal);
 }
-.timeblock__lede kbd {
+.timeblock__btnref {
   white-space: nowrap;
+  font-weight: var(--weight-semibold);
+  color: var(--text);
 }
 
 .timeblock__dayline {
@@ -597,6 +738,10 @@ kbd {
   padding: var(--space-3) var(--space-5);
   background: var(--surface-2);
   border-radius: var(--radius-sm);
+}
+.compose__warn {
+  font-size: var(--text-sm);
+  color: var(--warn);
 }
 .compose__actions {
   display: flex;

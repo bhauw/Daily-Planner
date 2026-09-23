@@ -88,13 +88,34 @@ a {
   border: 0;
 }
 
+/* Enter: new content settles 4px into place. Reduced motion collapses it below. */
+@keyframes dp-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+
+/*
+ * Reduced motion: stop things MOVING, not things changing.
+ *
+ * This used to zero every transition and animation, which also made hover and selection snap in
+ * with no fade — nothing a vestibular trigger cares about, and noticeably harsher. The rule now
+ * narrows what may transition to colour, opacity and shadow, so a caret no longer swings, a
+ * workload bar no longer slides its width, and positions/transforms jump; the short (<=150ms)
+ * colour fades stay. Keyframe animations are movement by nature, so they finish instantly
+ * (a 0.001ms run, not `none`, so any end state they hold still applies), and scripted scrolling
+ * becomes a jump.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color,
+      fill, stroke, opacity, box-shadow !important;
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
 }

@@ -12,6 +12,8 @@ import type { PlannerEvent } from "../contract";
 import {
   chooseGap,
   describePlacement,
+  firstOpening,
+  overlapFor,
   gapsFor,
   gapFits,
   placementFor,
@@ -176,5 +178,36 @@ describe("describePlacement", () => {
     expect(describePlacement(placementFor(g[0]))).toContain("Before the first block");
     expect(describePlacement(placementFor(g[2]))).toContain("After the last block");
     expect(describePlacement(placementFor(gaps([])[0]))).toContain("On an open day");
+  });
+});
+
+describe("the keyboard path's opening time (Block time)", () => {
+  // The mock day: lecture 09:00–10:20, the existing focus block 11:00–12:00.
+  const day = [ev("lecture", 9 * 60, 10 * 60 + 20), ev("focus", 11 * 60, 12 * 60)];
+
+  it("opens on the first gap that holds an hour, not on a fixed 11:00", () => {
+    const at = firstOpening(gapsFor(day, WINDOW_START, WINDOW_END));
+    expect(at).toEqual({ startMin: 12 * 60, durationMin: 60 });
+  });
+
+  it("takes a shorter first gap when no gap holds the full hour", () => {
+    const packed = [ev("a", 9 * 60, 10 * 60), ev("b", 10 * 60 + 40, 21 * 60)];
+    expect(firstOpening(gapsFor(packed, WINDOW_START, WINDOW_END))).toEqual({ startMin: 10 * 60, durationMin: 40 });
+  });
+
+  it("is null on a day with no room at all", () => {
+    expect(firstOpening(gapsFor([ev("all", 9 * 60, 21 * 60)], WINDOW_START, WINDOW_END))).toBeNull();
+  });
+});
+
+describe("overlapFor — naming what a proposed block would sit on", () => {
+  const day = [ev("ECONOMICS 250 Lecture", 9 * 60, 10 * 60 + 20), ev("Focus — Assignment 3", 11 * 60, 12 * 60)];
+
+  it("names the block a proposal overlaps", () => {
+    expect(overlapFor(day, 11 * 60, 12 * 60)?.title).toBe("Focus — Assignment 3");
+  });
+
+  it("is null when the proposal only touches a neighbour's edge", () => {
+    expect(overlapFor(day, 10 * 60 + 20, 11 * 60)).toBeNull();
   });
 });

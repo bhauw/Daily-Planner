@@ -120,7 +120,7 @@ completion note. Do not import directly from `../components/*` or `../api/*` to 
   must remain visible — do not set `outline: none` without an equal replacement.
 - Interactive targets ≥ **44×44px** (`--touch-min`). Text contrast ≥ **4.5:1** — small text uses
   `--text-2` (5.8:1 on `--bg`), never `--text-3` (3.3:1, decorative/large only).
-- Respect `prefers-reduced-motion` (handled globally in `base.css`; don't fight it).
+- Respect `prefers-reduced-motion` (handled globally in `base.css`: movement — transforms, size, position, keyframes — is removed, short colour/opacity/shadow transitions stay; don't fight it).
 - Drag interactions (Calendar drag-to-propose, Tasks time-blocking) need a keyboard-operable
   equivalent and must announce state — a drag is a *proposal*, never a committed change this round.
 

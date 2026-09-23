@@ -81,5 +81,41 @@ export const REASON_LABEL: Record<MailReason, string> = {
   interview: "Interview",
   deadline: "Deadline",
   obligation: "Payment",
+  // A rule he wrote in his triage profile. Its own words are on the row's "why" line.
+  custom: "Flagged",
   category: "",
 };
+
+/**
+ * The Mail badge in the sidebar: unread messages, the same number Digest's summary states.
+ *
+ * It was `drafts.length` announced as "unread", which counted a calendar bundle and mail already
+ * read — "Mail 6" beside a Digest that said four. One number with one definition.
+ */
+export function mailBadgeCount(drafts: Draft[]): number {
+  return groupMail(drafts).unreadCount;
+}
+
+/**
+ * A sender that says nobody reads what you send back — no-reply@, noreply@, do-not-reply@.
+ * Matched on the local part only, so "replyall@" or a person called Nora is not caught.
+ */
+export function isNoReplyAddress(address: string | undefined | null): boolean {
+  if (!address) return false;
+  return /(?:^|[^a-z0-9])(?:no[-_.]?reply|do[-_.]?not[-_.]?reply)[^@\s]*@/i.test(address);
+}
+
+/**
+ * What a message is waiting on, or null when it is waiting on nothing.
+ *
+ * Digest hardcoded "Your reply" under every message — a bank statement and a no-reply security
+ * alert included. A line that invents a task is worse than no line: a security warning wants
+ * checking, a statement wants reading, and a no-reply sender cannot be answered at all.
+ */
+export function waitingOn(draft: Draft): string | null {
+  if (isNoReplyAddress(draft.sender)) return null;
+  if (draft.reason === "security") return null;
+  if (draft.reason === "obligation") return "Your payment";
+  if ((draft.category ?? "other") === "finance") return null;
+  return "Your reply";
+}

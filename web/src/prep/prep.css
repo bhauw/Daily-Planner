@@ -1,0 +1,248 @@
+/*
+ * Prep card. Sits under the Dayline inside the Today pane, so it borrows the Dayline's rhythm:
+ * the same side padding, the same category rule on the left, mono for anything that is a time.
+ * No new scroll container — the pane scrolls, the card only grows.
+ */
+
+.todayprep {
+  padding: 0 var(--space-8) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.todayprep__due {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Quiet on purpose: a reminder, not an alarm. The row is the button. */
+.todayprep__row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  border: var(--hairline);
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+.todayprep__row:hover,
+.todayprep__row[aria-pressed="true"] {
+  background: var(--surface);
+}
+.todayprep__row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.todayprep__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cat-career);
+  flex: 0 0 6px;
+}
+.todayprep__ago {
+  color: var(--text-2);
+}
+
+.prep {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--cat-career);
+  padding: var(--space-6) var(--space-7) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.prep--none {
+  border-left-color: var(--border);
+}
+
+.prep__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.prep__eyebrow {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.prep__title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.prep__facts {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.prep__facts dt {
+  color: var(--text-2);
+}
+.prep__facts dd {
+  margin: 0;
+  color: var(--text);
+  min-width: 0;
+}
+
+.prep__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-top: var(--hairline);
+  padding-top: var(--space-5);
+}
+.prep__section--due {
+  border-top-color: var(--cat-career);
+}
+
+.prep__label {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.prep__label--field {
+  margin-top: var(--space-2);
+}
+.prep__optional {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-2);
+  margin-left: var(--space-3);
+}
+
+.prep__lede,
+.prep__empty,
+.prep__note,
+.prep__hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: var(--leading-normal);
+}
+.prep__lede {
+  color: var(--text);
+}
+.prep__hint {
+  font-size: var(--text-xs);
+}
+
+.prep__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  border: var(--hairline-strong);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.prep__input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.prep__actions {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.prep__failed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--warn);
+}
+
+.prep__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.prep__threadrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+.prep__threadbody {
+  min-width: 0;
+  flex: 1;
+}
+.prep__threadtitle {
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prep__why {
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  margin-top: 1px;
+  overflow-wrap: anywhere;
+}
+
+.prep__summary {
+  margin-top: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: pre-line;
+}
+.prep__summary p {
+  margin: 0;
+}
+.prep__provider {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+}
+
+.prep__task {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.prep__taskbox {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--text-2);
+  flex: 0 0 10px;
+}
+.prep__tasktitle {
+  flex: 1;
+  min-width: 0;
+}

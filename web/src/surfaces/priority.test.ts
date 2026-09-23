@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { Draft, PlannerEvent, TaskList } from "../api/client";
-import { RANK, groupByRank, rankFocus, relative } from "./priority";
+import { RANK, focusEvents, groupByRank, rankFocus, relative } from "./priority";
 import { presentationFor } from "../lib/category";
 
 // A fixed Vancouver afternoon. Everything below is expressed relative to it.
@@ -71,6 +71,52 @@ describe("rankFocus", () => {
     // An event that simply ended is not a thing you owe anyone.
     expect(byId.finished.rank).toBe(RANK.today);
     expect(byId.finished.reason).toBe("finished");
+  });
+
+  /*
+   * A movable work block ("Focus — Assignment 3") is kind "deadline" with no `due` and a real
+   * end. It used to be read as a point-in-time deadline at its start, so once it began it went
+   * overdue and took the lead card — "due 6 h ago" on a block that had simply ended.
+   */
+  it("treats a deadline-kind block with no due as an ordinary timed event", () => {
+    const items = rankFocus({
+      ...empty(),
+      events: [
+        event({ id: "ended", kind: "deadline", due: null, start: at(-330), end: at(-270) }),
+        event({ id: "running", kind: "deadline", due: null, start: at(-30), end: at(30) }),
+      ],
+    });
+
+    const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+    expect(byId.ended.rank).toBe(RANK.today);
+    expect(byId.ended.reason).toBe("finished");
+    expect(byId.ended.until).toBe(at(-270));
+    expect(byId.running.rank).toBe(RANK.now);
+    expect(items.every((i) => i.rank !== RANK.overdue)).toBe(true);
+  });
+
+  // The Priority queue carries items like "interview time" — kind "event", a start that is
+  // just when it was noticed, and a real `due`. The due is the moment that matters.
+  it("hangs any event that carries a due off the due, whatever its kind", () => {
+    const [item] = rankFocus({
+      ...empty(),
+      events: [event({ id: "q1", kind: "event", start: at(-60), end: null, due: at(360) })],
+    });
+
+    expect(item.rank).toBe(RANK.today);
+    expect(item.reason).toBe("due in 6 h");
+    expect(item.at).toBe(at(360));
+  });
+
+  // Only a deadline can be late. A point-in-time event that has passed is behind you, not owed.
+  it("never calls a past point-in-time event overdue", () => {
+    const [item] = rankFocus({
+      ...empty(),
+      events: [event({ id: "posted", start: at(-15), end: null, due: null })],
+    });
+
+    expect(item.rank).toBe(RANK.today);
+    expect(item.reason).toBe("started 15 min ago");
   });
 
   it("splits the next two hours from the rest of the day", () => {
@@ -136,6 +182,31 @@ describe("rankFocus", () => {
     expect(items.every((i) => i.rank !== RANK.overdue)).toBe(true);
   });
 
+  /*
+   * The engine's triage band is what Digest trusts to put a security alert and an interview in
+   * "Read first". Focus threw it away and ranked both under "No date", after Groceries.
+   */
+  it("lifts mail the engine banded urgent to Next up, with the engine's reason", () => {
+    const drafts: Draft[] = [
+      {
+        id: "sec", title: "Security alert", summary: "", kind: "reply", sender: "no-reply@x.com",
+        receivedAt: null, band: "urgent", reason: "security", why: "Security warning — \"new sign in\"",
+      },
+      { id: "plain", title: "Statement", summary: "", kind: "reply", receivedAt: null, band: "ordinary", why: "Finance" },
+    ];
+    const items = rankFocus({
+      ...empty(),
+      drafts,
+      lists: list([{ id: "g", title: "Groceries", category: "personal", due: null, done: false }]),
+    });
+    const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+
+    expect(byId.sec.rank).toBe(RANK.next);
+    expect(byId.sec.reason).toBe("Security warning — \"new sign in\"");
+    expect(byId.plain.rank).toBe(RANK.undated);
+    expect(items[0].id).toBe("sec");
+  });
+
   it("only surfaces mail that is actually a reply", () => {
     const drafts: Draft[] = [
       { id: "reply", title: "Needs an answer", summary: "", kind: "reply", receivedAt: at(-30) },
@@ -166,6 +237,24 @@ describe("rankFocus", () => {
     );
 
     expect(groups.map((g) => g.label)).toEqual(["Overdue", "Next up"]);
+  });
+});
+
+/*
+ * Focus ranked `preview.schedule` alone, on the belief that the queue was the same events in
+ * another order. It is not: the Priority queue carries its own items (an interview-time ask, a
+ * sign-up), and Focus — "what to do next" — never listed them.
+ */
+describe("focusEvents", () => {
+  it("ranks the queue and the schedule together, each event once", () => {
+    const shared = event({ id: "s1", start: at(30) });
+    const merged = focusEvents({
+      queue: [event({ id: "q1", start: at(60) }), shared],
+      schedule: [shared, event({ id: "s2", start: at(90) })],
+      day: "2026-09-16",
+    });
+
+    expect(merged.map((e) => e.id).sort()).toEqual(["q1", "s1", "s2"]);
   });
 });
 

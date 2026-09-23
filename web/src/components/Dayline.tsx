@@ -15,14 +15,26 @@
 import type { PlannerEvent } from "../api/client";
 import { presentationFor } from "../lib/category";
 import { durationMinutes, formatTime } from "../lib/format";
-import { PressureBar, levelFor } from "./PressureBar";
+import { PressureBar } from "./PressureBar";
+import { workloadFor } from "../lib/workload";
 import "./dayline.css";
 
 interface DaylineProps {
   events: PlannerEvent[];
-  /** planning window bounds in minutes-from-midnight; default 09:00–21:00. */
+  /**
+   * Drawn window bounds in minutes-from-midnight; default 09:00–21:00. The end bounds the
+   * trailing "Free until" row. Workload is always read over the planning day, not this.
+   */
   windowStart?: number;
   windowEnd?: number;
+  /**
+   * Makes each block a button that reports which event was pressed. Optional, and absent
+   * everywhere but Today: Tasks' time-blocking measures these rows as drop targets, and a
+   * button there would be a click target competing with the drag.
+   */
+  onSelect?: (event: PlannerEvent) => void;
+  /** The block to show as pressed, when `onSelect` is given. */
+  selectedId?: string | null;
 }
 
 interface BlockRow {
@@ -64,7 +76,14 @@ function fromMinutes(mins: number): string {
 }
 
 function buildRows(events: PlannerEvent[], windowEnd: number): Row[] {
-  const sorted = [...events].sort((a, b) => a.start.localeCompare(b.start));
+  // By instant, not by string. `localeCompare` on ISO strings only orders correctly when every
+  // one carries the same offset; the engine's reads say "-07:00" and a write's receipt says "Z",
+  // so a block created at 16:00 sorted before a 09:00 lecture and the day read out of order.
+  const at = (iso: string) => {
+    const t = new Date(iso).getTime();
+    return Number.isNaN(t) ? Infinity : t;
+  };
+  const sorted = [...events].sort((a, b) => at(a.start) - at(b.start));
   const rows: Row[] = [];
 
   sorted.forEach((event, i) => {
@@ -105,34 +124,10 @@ function buildRows(events: PlannerEvent[], windowEnd: number): Row[] {
   return rows;
 }
 
-function computePressure(events: PlannerEvent[], windowStart: number, windowEnd: number) {
-  const window = Math.max(1, windowEnd - windowStart);
-  let committed = 0;
-  const starts: number[] = [];
-  const ends: number[] = [];
-  for (const e of events) {
-    const s = minutesOfDay(e.start);
-    const en = e.end ? minutesOfDay(e.end) : s != null ? s + 30 : null;
-    if (s != null && en != null) {
-      committed += Math.max(0, en - s);
-      starts.push(s);
-      ends.push(en);
-    }
-  }
-  const order = starts.map((s, i) => ({ s, e: ends[i] })).sort((a, b) => a.s - b.s);
-  let backToBack = 0;
-  for (let i = 1; i < order.length; i++) {
-    if (order[i].s - order[i - 1].e < 15) backToBack++;
-  }
-  const value = Math.min(1, committed / window);
-  return { value, backToBack, count: events.length };
-}
-
-export function Dayline({ events, windowStart = 9 * 60, windowEnd = 21 * 60 }: DaylineProps) {
+export function Dayline({ events, windowEnd = 21 * 60, onSelect, selectedId }: DaylineProps) {
   const rows = buildRows(events, windowEnd);
-  const { value, backToBack, count } = computePressure(events, windowStart, windowEnd);
-  const word = levelFor(value) === "high" ? "High" : levelFor(value) === "moderate" ? "Moderate" : "Calm";
-  const detail = backToBack > 0 ? `${word} · ${backToBack} back-to-back` : `${word} · ${count} blocks`;
+  // One reading everywhere (lib/workload): the window this timeline DRAWS no longer changes it.
+  const { value, detail } = workloadFor(events);
 
   return (
     <div className="dayline-wrap">
@@ -150,10 +145,23 @@ export function Dayline({ events, windowStart = 9 * 60, windowEnd = 21 * 60 }: D
             >
               <div className="num slot__hr">{row.time}</div>
               <div className="slot__lane">
-                <div className="blk" style={{ borderColor: row.colorVar }}>
-                  <div className="blk__title">{row.event.title}</div>
-                  {row.subtitle && <div className="num blk__sub">{row.subtitle}</div>}
-                </div>
+                {onSelect ? (
+                  <button
+                    type="button"
+                    className="blk blk--button"
+                    style={{ borderColor: row.colorVar }}
+                    aria-pressed={selectedId === row.event.id}
+                    onClick={() => onSelect(row.event)}
+                  >
+                    <span className="blk__title" style={{ display: "block" }}>{row.event.title}</span>
+                    {row.subtitle && <span className="num blk__sub" style={{ display: "block" }}>{row.subtitle}</span>}
+                  </button>
+                ) : (
+                  <div className="blk" style={{ borderColor: row.colorVar }}>
+                    <div className="blk__title">{row.event.title}</div>
+                    {row.subtitle && <div className="num blk__sub">{row.subtitle}</div>}
+                  </div>
+                )}
               </div>
             </div>
           ) : (

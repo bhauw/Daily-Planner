@@ -14,7 +14,7 @@
  * every boundary.
  */
 
-import type { Category, Draft, PlannerEvent, TaskItem, TaskList } from "../api/client";
+import type { Category, Draft, PlannerEvent, Preview, TaskItem, TaskList } from "../api/client";
 import { colorForCategory, presentationFor } from "../lib/category";
 
 /** What kind of thing an item is. Focus mixes all three. */
@@ -138,7 +138,14 @@ interface Placement {
  * Where a single dated thing belongs. `until` is only meaningful for events:
  * a task has a deadline, not a duration, so it can never be "happening now".
  */
-function placeDated(atMs: number | null, untilMs: number | null, nowMs: number, verb: string): Placement {
+function placeDated(
+  atMs: number | null,
+  untilMs: number | null,
+  nowMs: number,
+  verb: string,
+  /** False for plain events: only something with a deadline can be late. */
+  canBeLate = true,
+): Placement {
   if (atMs === null) {
     return { rank: RANK.undated, reason: "no date" };
   }
@@ -152,6 +159,10 @@ function placeDated(atMs: number | null, untilMs: number | null, nowMs: number, 
     // An event whose end has passed is simply done — only deadlines go overdue.
     if (untilMs !== null) {
       return { rank: RANK.today, reason: "finished" };
+    }
+    // A point-in-time event with no end ("review posted") is behind you, not owed.
+    if (!canBeLate) {
+      return { rank: RANK.today, reason: `started ${relative(nowMs, atMs)}` };
     }
     return { rank: RANK.overdue, reason: `${verb} ${relative(nowMs, atMs)}` };
   }
@@ -168,10 +179,21 @@ function placeDated(atMs: number | null, untilMs: number | null, nowMs: number, 
 
 function eventItem(event: PlannerEvent, nowMs: number): FocusItem {
   // A deadline's moment is its due instant; a normal event's is when it starts.
-  const isDeadline = event.kind === "deadline";
-  const atIso = isDeadline ? (event.due ?? event.start) : event.start;
+  //
+  // Only an event that actually carries `due` is a deadline. A movable work block ("Focus —
+  // Assignment 3") is kind "deadline" too, but with no due and a real end: reading its start as
+  // a due instant made it go "overdue" the moment it began and take the lead card with "due 6 h
+  // ago" on a block that had simply ended. Without a due it is timed like any other event.
+  //
+  // The reverse holds too: a Priority-queue item like "interview time" is kind "event" with a
+  // start that is only when it was noticed and a real due. The due is the moment that matters,
+  // so anything carrying one hangs off it.
+  const isDeadline = Boolean(event.due);
+  const atIso = isDeadline ? event.due! : event.start;
   const untilIso = isDeadline ? null : event.end;
-  const placement = placeDated(ms(atIso), ms(untilIso), nowMs, isDeadline ? "due" : "starts");
+  const placement = isDeadline
+    ? placeDated(ms(atIso), null, nowMs, "due")
+    : placeDated(ms(atIso), ms(untilIso), nowMs, "starts", false);
 
   return {
     id: event.id,
@@ -215,8 +237,14 @@ function taskItems(lists: TaskList[], nowMs: number): FocusItem[] {
 
 /**
  * Mail that is waiting on you. A message has no deadline, so it never claims to
- * be overdue — it sits in `undated` unless it arrived today, which is the only
- * honest urgency signal an inbox gives us.
+ * be overdue — it sits in `undated` unless it arrived today, or unless the
+ * engine's triage banded it urgent.
+ *
+ * The band is the engine's own read of the message (a security warning, an
+ * interview), and Digest already trusts it for "Read first". Ignoring it here
+ * put the same security alert under "No date", after Groceries — one message,
+ * two contradictory ranks. Urgent mail goes to Next up, and the engine's `why`
+ * is the reason, so the row says the phrase that put it there.
  */
 function replyItems(drafts: Draft[], nowMs: number): FocusItem[] {
   return drafts
@@ -224,6 +252,8 @@ function replyItems(drafts: Draft[], nowMs: number): FocusItem[] {
     .map((draft) => {
       const received = ms(draft.receivedAt ?? null);
       const isToday = received !== null && sameDay(received, nowMs, ZONE);
+      const urgent = draft.band === "urgent";
+      const arrived = received === null ? "waiting" : `arrived ${relative(nowMs, received)}`;
       return {
         id: draft.id,
         kind: "reply" as const,
@@ -232,8 +262,8 @@ function replyItems(drafts: Draft[], nowMs: number): FocusItem[] {
         category: draft.category ?? "other",
         at: draft.receivedAt ?? null,
         until: null,
-        rank: isToday ? RANK.today : RANK.undated,
-        reason: received === null ? "waiting" : `arrived ${relative(nowMs, received)}`,
+        rank: urgent ? RANK.next : isToday ? RANK.today : RANK.undated,
+        reason: urgent ? (draft.why ?? arrived) : arrived,
         detail: draft.sender ?? null,
         colorVar: colorForCategory(draft.category ?? "other"),
       };
@@ -248,12 +278,28 @@ function compare(a: FocusItem, b: FocusItem): number {
   if (at !== bt) {
     if (at === null) return 1; // undated sinks within its bucket
     if (bt === null) return -1;
-    // Overdue reads worst-first: the thing you are latest on comes first.
-    return a.rank === RANK.overdue ? at - bt : at - bt;
+    // Earliest first in every bucket. For overdue that is also worst-first: the oldest
+    // missed instant is the thing you are latest on.
+    return at - bt;
   }
 
   if (a.title !== b.title) return a.title < b.title ? -1 : 1;
   return a.id < b.id ? -1 : 1; // total order, so the list never reshuffles on reload
+}
+
+/**
+ * Every event Focus should rank: the Priority queue and the schedule, each once.
+ *
+ * They were assumed to be the same events in two orders, so only the schedule was ranked. They
+ * are not — the queue carries its own items (an interview-time ask, a club sign-up) — and Focus,
+ * the surface that claims to be "what to do next", never listed them. Deduplicated by id so an
+ * event on both is ranked once; the schedule's copy wins, since it carries the real end.
+ */
+export function focusEvents(preview: Preview): PlannerEvent[] {
+  const byId = new Map<string, PlannerEvent>();
+  for (const event of preview.queue) byId.set(event.id, event);
+  for (const event of preview.schedule) byId.set(event.id, event);
+  return [...byId.values()];
 }
 
 export interface FocusInput {

@@ -115,7 +115,7 @@ final class GoogleMailSourceTests: XCTestCase {
         // Break caught: inference overrules the user. A label is a choice they made; every
         // signal below it is the app guessing.
         let summary = try summary(
-            id: "m1", subject: "DEMO 250 midterm", sender: "recruiting@greenhouse.io",
+            id: "m1", subject: "ECONOMICS 250 midterm", sender: "recruiting@example.test",
             labels: ["Finance"]
         )
         XCTAssertEqual(GoogleMailSource.category(for: summary), .finance)

@@ -64,7 +64,7 @@ interface Mounted {
   dialog: () => HTMLElement | null;
 }
 
-async function mount(capability: Capability): Promise<Mounted> {
+async function mount(capability: Capability, card: Draft = draft): Promise<Mounted> {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -75,7 +75,7 @@ async function mount(capability: Capability): Promise<Mounted> {
         capability,
         client,
         assist: undefined,
-        children: createElement(DraftCard, { draft }),
+        children: createElement(DraftCard, { draft: card }),
       }),
     );
   });
@@ -138,6 +138,34 @@ describe("DraftCard actions", () => {
     const labels = m.buttons().map((b) => b.textContent?.trim());
     expect(labels).toContain("Reply in Gmail");
     expect(labels).not.toContain("Reply");
+
+    cleanup(m);
+  });
+
+  /*
+   * A "Calendar + Task bundle" has no sender and nothing to reply to, yet its primary button
+   * was "Reply in Gmail" — the only thing the card could NOT be for. It now says what it is and,
+   * until the engine hands over the bundle's items, why it cannot be reviewed here yet.
+   */
+  it("never offers a reply on a bundle, and says why it cannot be reviewed yet", async () => {
+    const bundle: Draft = {
+      id: "d2",
+      title: "Calendar + Task bundle",
+      summary: "Creates the Example Consulting chat, a prep task, and a 25-minute transit buffer.",
+      kind: "bundle",
+    };
+    const m = await mount(
+      { canSend: true, canSchedule: true, canReschedule: true, canDraft: false, canReadBody: false, canSummarize: false },
+      bundle,
+    );
+
+    const labels = m.buttons().map((b) => b.textContent?.trim());
+    expect(labels.some((l) => /reply|gmail/i.test(l ?? ""))).toBe(false);
+    const review = m.buttons().find((b) => b.textContent?.trim() === "Review bundle");
+    expect(review).toBeDefined();
+    expect(review!.disabled).toBe(true);
+    expect(m.host.textContent).toMatch(/nothing has been created/i);
+    expect(labels).toContain("Copy summary");
 
     cleanup(m);
   });

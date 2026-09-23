@@ -16,22 +16,27 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { api as defaultApi, type Assist, type Capability } from "../api/client";
+import { useModalFocus } from "../lib/useModalFocus";
 import { Composer } from "./Composer";
 import { Scheduler } from "./Scheduler";
-import type { ComposePrefill, SchedulePrefill } from "./types";
+import type { ComposePrefill, SchedulePrefill, Written } from "./types";
 import "./compose.css";
 
 export interface WriteDesk {
   /** What the connected grant actually permits. Rows render off this, never off a guess. */
   capability: Capability;
-  compose: (prefill: ComposePrefill) => void;
+  /**
+   * `onSent` fires once, after THIS message is actually away — never on open, never on a
+   * failed send. The prep card uses it to drop its "Thank-you due" row; a caller that does not
+   * care passes nothing and nothing changes.
+   */
+  compose: (prefill: ComposePrefill, options?: { onSent?: () => void }) => void;
   schedule: (prefill: SchedulePrefill) => void;
 }
 
@@ -42,17 +47,20 @@ export function useWriteDesk(): WriteDesk | null {
 }
 
 type Desk =
-  | { kind: "compose"; prefill: ComposePrefill }
+  | { kind: "compose"; prefill: ComposePrefill; onSent?: () => void }
   | { kind: "schedule"; prefill: SchedulePrefill };
 
 interface WriteDeskProviderProps {
   capability: Capability;
   /** Injected for tests; the real engine client by default. */
-  client?: Pick<typeof defaultApi, "sendMail" | "createEvent" | "moveEvent" | "draftReply">;
+  client?: Pick<typeof defaultApi, "sendMail" | "createEvent" | "moveEvent" | "draftReply"> &
+    // Optional so an injected test client need not implement it; without it the composer simply
+    // offers no "Offer times".
+    Partial<Pick<typeof defaultApi, "week">>;
   /** The assistant, for the composer's offer and for the line that says where content goes. */
   assist?: Assist;
   /** Called after a successful write, so the surfaces can pick the change up. */
-  onWrote?: () => void;
+  onWrote?: (written: Written) => void;
   children: ReactNode;
 }
 
@@ -68,119 +76,56 @@ export function WriteDeskProvider({
   const panelRef = useRef<HTMLDivElement>(null);
   const backgroundRef = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<Element | null>(null);
+  const restoreAncestors = useRef<HTMLElement[]>([]);
+  const remember = () => {
+    restoreFocusTo.current = document.activeElement;
+    const chain: HTMLElement[] = [];
+    for (let el = document.activeElement?.parentElement ?? null; el && el !== document.body; el = el.parentElement) {
+      chain.push(el);
+    }
+    restoreAncestors.current = chain;
+  };
 
-  const close = useCallback(() => {
+  // Set by the composer while it is open: asks before a written reply is thrown away.
+  const closeGuard = useRef<(() => boolean) | null>(null);
+  const registerCloseGuard = useCallback((guard: (() => boolean) | null) => {
+    closeGuard.current = guard;
+  }, []);
+
+  /** Closes, whatever is in the form. What the composer's own Discard button calls. */
+  const forceClose = useCallback(() => {
     // Never over a send in flight. The request would complete anyway, and the user would be left
     // without the one thing they need: whether it went.
     if (busy) return;
     setOpen(null);
   }, [busy]);
 
+  /** Escape and the backdrop: close only if that loses nothing, or once the user says so. */
+  const close = useCallback(() => {
+    if (busy) return;
+    if (closeGuard.current && !closeGuard.current()) return;
+    setOpen(null);
+  }, [busy]);
+
   const value = useMemo<WriteDesk>(
     () => ({
       capability,
-      compose: (prefill) => {
-        restoreFocusTo.current = document.activeElement;
-        setOpen({ kind: "compose", prefill });
+      compose: (prefill, options) => {
+        remember();
+        setOpen({ kind: "compose", prefill, onSent: options?.onSent });
       },
       schedule: (prefill) => {
-        restoreFocusTo.current = document.activeElement;
+        remember();
         setOpen({ kind: "schedule", prefill });
       },
     }),
     [capability],
   );
 
-  // Everything that is focusable inside the panel, in document order. Queried per keystroke
-  // rather than cached: the composer grows a Cc/Bcc row and an error region while it is open,
-  // so a list captured at mount would trap against a stale set.
-  //
-  // No visibility filter. Nothing inside this panel is ever hidden with CSS — the composer
-  // conditionally RENDERS the Cc/Bcc row rather than hiding it, and compose.css carries no
-  // `display: none` or `visibility: hidden` at all — so a filter would guard a case that
-  // cannot arise. An `offsetParent` check also reports every element as hidden under jsdom,
-  // which has no layout, so it would silently empty this list in the tests that prove the
-  // trap works.
-  function focusablesInPanel(): HTMLElement[] {
-    const panel = panelRef.current;
-    if (!panel) return [];
-    const selector =
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    return Array.from(panel.querySelectorAll<HTMLElement>(selector));
-  }
-
-  // Escape closes, focus moves into the panel on open and back to the row on close, and Tab
-  // is held inside the dialog.
-  //
-  // It was not held: tabbing from the panel walked straight out into the page behind the
-  // scrim — measured at stop 24 of 44, with 21 stops landing on controls the user cannot see
-  // and did not mean to reach. The background is also marked `inert` while the dialog is up,
-  // which both removes it from the tab order and hides it from assistive technology. Without
-  // that, `aria-modal="true"` was asserting an isolation that did not exist: a screen reader
-  // could still walk the whole day behind a dialog claiming to be modal.
-  useEffect(() => {
-    if (!open) {
-      const previous = restoreFocusTo.current;
-      if (previous instanceof HTMLElement) previous.focus();
-      return;
-    }
-
-    const background = backgroundRef.current;
-    // `inert` is set through the DOM rather than as a JSX prop: React 18 does not recognise it
-    // and warns when handed a boolean.
-    background?.setAttribute("inert", "");
-    background?.setAttribute("aria-hidden", "true");
-
-    panelRef.current?.focus();
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        close();
-        return;
-      }
-      if (event.key !== "Tab") return;
-
-      const focusables = focusablesInPanel();
-      if (focusables.length === 0) {
-        // Nothing to land on; keep focus on the panel rather than letting it escape.
-        event.preventDefault();
-        panelRef.current?.focus();
-        return;
-      }
-
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement;
-
-      // The panel itself holds focus on open (tabIndex -1), so the first Tab must enter the
-      // list rather than fall through to the page behind.
-      if (active === panelRef.current) {
-        event.preventDefault();
-        (event.shiftKey ? last : first).focus();
-        return;
-      }
-      if (!(active instanceof HTMLElement) || !panelRef.current?.contains(active)) {
-        event.preventDefault();
-        first.focus();
-        return;
-      }
-      if (event.shiftKey && active === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      background?.removeAttribute("inert");
-      background?.removeAttribute("aria-hidden");
-    };
-  }, [open, close]);
+  // Escape closes, focus moves into the panel on open and back to the row on close, Tab is held
+  // inside the dialog, and the app behind it is inert. See `useModalFocus` for why each of
+  // those is there; the shortcut overlay runs the same hook, so there is one trap to get right.
+  useModalFocus({ open: open !== null, panelRef, backgroundRef, restoreFocusTo, restoreFallbacks: restoreAncestors, onClose: close });
 
   return (
     <WriteDeskContext.Provider value={value}>
@@ -226,11 +171,16 @@ export function WriteDeskProvider({
                       draft: client.draftReply,
                       draftProvider: assist.provider,
                       draftLeavesMachine: assist.contentLeavesMachine,
+                      ...(client.week ? { readWeek: client.week } : {}),
                     }
                   : {})}
-                onClose={close}
+                onClose={forceClose}
+                registerCloseGuard={registerCloseGuard}
                 onBusyChange={setBusy}
-                onWrote={onWrote}
+                onWrote={(written) => {
+                  open.onSent?.();
+                  onWrote?.(written);
+                }}
               />
             ) : (
               <Scheduler

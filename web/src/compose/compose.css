@@ -202,6 +202,11 @@
   border-radius: var(--radius-md);
 }
 
+.compose__conflict {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--warn);
+}
 .compose__error {
   margin: 0;
   padding: var(--space-5) var(--space-6);
@@ -326,4 +331,87 @@
 .compose__custominput:disabled {
   color: var(--text-3);
   cursor: not-allowed;
+}
+
+/*
+ * Offer times — the slot picker under the reply chips (compose/OfferTimes.tsx).
+ *
+ * It lives in the Mail workbench's middle pane, which must never scroll (scroll.test.ts), so
+ * everything here is content-height and wraps: controls on one line, slots as chips, the note
+ * and the button on one more. No overflow, no max-height — three short rows is the whole budget.
+ */
+.offer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 0 0 auto;
+  padding: var(--space-5) var(--space-6);
+  background: var(--surface-2);
+  border: var(--hairline-strong);
+  border-radius: var(--radius-md);
+}
+.offer__controls,
+.offer__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.offer__label {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.offer__spacer {
+  flex: 1 1 auto;
+}
+.offer__seg {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--surface);
+  border: var(--hairline-strong);
+  border-radius: var(--radius-sm);
+}
+.offer__segbtn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.offer__segbtn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-color: var(--border);
+}
+.offer__slots {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.offer__slot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.offer__day {
+  color: var(--text);
+}
+.offer__tag {
+  font-size: var(--text-xs);
+  color: var(--warn);
+}
+.offer__note {
+  flex: 1 1 16em;
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--text-2);
+}
+.offer__note--error {
+  color: var(--warn);
 }

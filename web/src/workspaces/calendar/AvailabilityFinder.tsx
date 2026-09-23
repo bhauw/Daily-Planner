@@ -1,5 +1,5 @@
 /*
- * AvailabilityFinder — "when can I take a 45-minute coffee chat next week?"
+ * AvailabilityFinder — "when can I take a 45-minute coffee chat in the next few days?"
  * Ranked slots that honour every scheduling rule, with the reasoning made visible
  * on every slot (the product's rule: every assumption is stated, never hidden).
  *
@@ -21,13 +21,15 @@ import type { PlannerEvent } from "../contract";
 import { EmptyState } from "../contract";
 import { findAvailability, fmtMinutes, type Slot } from "./scheduling";
 import { isPlanning, type CalendarState } from "./roles";
-import { partsOfKey } from "./tz";
+import { dayKey, partsOfKey } from "./tz";
 
 interface AvailabilityFinderProps {
   fromKey: string;
   planning: PlannerEvent[];
   allEvents: PlannerEvent[];
   states: CalendarState[];
+  /** The clock; injected in tests. Today's slots never start before it. */
+  now?: Date;
 }
 
 const DURATIONS = [30, 45, 60];
@@ -38,21 +40,27 @@ function monthDay(key: string): string {
   return `${MONTHS[m - 1]} ${d}`;
 }
 
-export function AvailabilityFinder({ fromKey, planning, allEvents, states }: AvailabilityFinderProps) {
+export function AvailabilityFinder({ fromKey, planning, allEvents, states, now: nowProp }: AvailabilityFinderProps) {
   const [duration, setDuration] = useState(45);
   const [illustrate, setIllustrate] = useState(false);
+  // Read once per mount: a clock that ticked on every render would reshuffle the ranking
+  // under the person reading it.
+  const [now] = useState(() => nowProp ?? new Date());
 
-  const slots = useMemo(() => findAvailability(planning, fromKey, duration, 7).slice(0, 8), [planning, fromKey, duration]);
+  const slots = useMemo(() => findAvailability(planning, fromKey, duration, 7, now).slice(0, 8), [planning, fromKey, duration, now]);
 
   const excluded = useMemo(() => allEvents.filter((e) => !isPlanning(e, states)), [allEvents, states]);
   const excludedCals = useMemo(() => states.filter((s) => s.role === "excluded"), [states]);
 
   // The illustration: how many slots WOULD disappear if excluded calendars counted.
   const withExcluded = useMemo(
-    () => (illustrate ? findAvailability(allEvents, fromKey, duration, 7) : null),
-    [illustrate, allEvents, fromKey, duration],
+    () => (illustrate ? findAvailability(allEvents, fromKey, duration, 7, now) : null),
+    [illustrate, allEvents, fromKey, duration, now],
   );
-  const removedByExcluded = withExcluded ? Math.max(0, findAvailability(planning, fromKey, duration, 7).length - withExcluded.length) : 0;
+  const removedByExcluded = withExcluded ? Math.max(0, findAvailability(planning, fromKey, duration, 7, now).length - withExcluded.length) : 0;
+  // It searches seven days starting at the anchor (today by default) — so it says that, not
+  // "next week", which is a different set of days.
+  const span = fromKey === dayKey(now.toISOString()) ? "the next 7 days" : `the 7 days from ${monthDay(fromKey)}`;
 
   return (
     <div className="avail">
@@ -68,13 +76,13 @@ export function AvailabilityFinder({ fromKey, planning, allEvents, states }: Ava
               </button>
             ))}
           </div>
-          <span className="avail__label">slot next week — ranked, normal hours first.</span>
+          <span className="avail__label">slot in {span} — ranked, normal hours first.</span>
         </div>
 
         {slots.length === 0 ? (
           <EmptyState
-            title="No open slots next week"
-            detail={`Nothing clears a ${duration}-minute window in normal hours or the 6–8 PM fallback across the next 7 days. Try a shorter duration or a later week.`}
+            title={`No open slots in ${span}`}
+            detail={`Nothing clears a ${duration}-minute window in normal hours or the evening fallback across ${span}. Try a shorter duration or a later week.`}
           />
         ) : (
           <ol className="slots">

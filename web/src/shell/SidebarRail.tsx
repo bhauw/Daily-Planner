@@ -3,9 +3,14 @@
  * Settings, with pending-count badges and an active state. Every row is a real
  * <a> with an accessible name; the active row is marked aria-current="page".
  * Never a clickable <div>.
+ *
+ * Each row answers to its number key (1 is the top row; see `NAV_KEYS`), announced through
+ * `aria-keyshortcuts` rather than printed, so the rail stays quiet. The "Shortcuts" row at the
+ * foot is the visible way into the list of every key, for anyone who has not guessed "?".
  */
 
 import { NAV, SETTINGS_ITEM, type Badges, type NavItem, type RouteId } from "./nav";
+import { HELP_KEY, keyLabel, navKeyFor } from "./shortcuts";
 import { CountBadge } from "../components/Badge";
 import "./sidebar-rail.css";
 
@@ -13,9 +18,11 @@ interface SidebarRailProps {
   active: RouteId;
   badges: Badges;
   onNavigate: (path: string) => void;
+  /** Opens the keyboard-shortcut overlay. The row is left out when nothing can show it. */
+  onShowShortcuts?: () => void;
 }
 
-export function SidebarRail({ active, badges, onNavigate }: SidebarRailProps) {
+export function SidebarRail({ active, badges, onNavigate, onShowShortcuts }: SidebarRailProps) {
   return (
     <nav className="sidebar" aria-label="Primary">
       {NAV.map((section) => (
@@ -33,6 +40,19 @@ export function SidebarRail({ active, badges, onNavigate }: SidebarRailProps) {
         </div>
       ))}
       <div className="sidebar__spacer" />
+      {onShowShortcuts && (
+        <button
+          type="button"
+          className="nav nav--quiet"
+          aria-keyshortcuts={HELP_KEY}
+          onClick={onShowShortcuts}
+        >
+          <span className="nav__label">Shortcuts</span>
+          <kbd className="nav__key" aria-hidden="true">
+            {keyLabel(HELP_KEY)}
+          </kbd>
+        </button>
+      )}
       <NavLink
         item={SETTINGS_ITEM}
         active={SETTINGS_ITEM.id === active}
@@ -57,6 +77,7 @@ function NavLink({ item, active, badge, onNavigate }: NavLinkProps) {
       className={["nav", active ? "nav--on" : ""].filter(Boolean).join(" ")}
       href={item.path}
       aria-current={active ? "page" : undefined}
+      aria-keyshortcuts={navKeyFor(item.id)}
       onClick={(e) => {
         // Left-click without a modifier navigates in-app; everything else
         // (cmd-click to open a detached window, etc.) uses the native href.

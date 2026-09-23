@@ -70,3 +70,13 @@ export function PlusIcon({ size = 14 }: IconProps) {
     </svg>
   );
 }
+
+const CHEVRON = { right: "M9 6l6 6-6 6", left: "M15 6l-6 6 6 6", down: "M6 9l6 6 6-6" } as const;
+
+export function ChevronIcon({ size = 14, dir = "right" }: IconProps & { dir?: keyof typeof CHEVRON }) {
+  return (
+    <svg {...base(size)}>
+      <path d={CHEVRON[dir]} />
+    </svg>
+  );
+}

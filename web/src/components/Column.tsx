@@ -21,7 +21,12 @@ export function ColumnHeader({ eyebrow, title, count }: ColumnHeaderProps) {
     <div className="colhead">
       <div className="colhead__eyebrow">{eyebrow}</div>
       <div className="colhead__row">
-        <h3 className="colhead__title">{title}</h3>
+        {/*
+         * <h2>, not <h3>: every surface that uses this now has a real page <h1> above it
+         * (Home/Mail/Tasks freshly added; Focus/Digest/Calendar already had one), and a column
+         * or list header is the next level down from that, never two levels down.
+         */}
+        <h2 className="colhead__title">{title}</h2>
         {count && <span className="num colhead__count">{count}</span>}
       </div>
     </div>

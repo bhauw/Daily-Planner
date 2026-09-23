@@ -41,18 +41,19 @@
 }
 
 .lead__eyebrow {
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
+  font-family: var(--eyebrow-font);
+  font-size: var(--eyebrow-size);
+  font-weight: var(--eyebrow-weight);
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
-  color: var(--text-2);
+  color: var(--eyebrow-color);
 }
 
 .lead__title {
   margin-top: var(--space-3);
-  font-size: var(--text-3xl);
+  font-size: var(--title-hero);
   font-weight: var(--weight-semibold);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
   line-height: var(--leading-tight);
 }
 
@@ -111,11 +112,21 @@
 
 /* ----- Pressable row ----- */
 
+/* Real <ul>: list-style/margin/padding reset, same as .compose__addrs. */
+.focus__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .focus__row {
   border-top: var(--hairline);
 }
 
-.focus__row:last-of-type {
+/* Each row's <details> is now its own <li>'s only child, so :last-of-type on .focus__row
+   would match every row (each is the last of its type within its own <li>). The <li>s are the
+   siblings, so the last-row rule is keyed off them instead. */
+.focus__rowitem:last-of-type .focus__row {
   border-bottom: var(--hairline);
 }
 

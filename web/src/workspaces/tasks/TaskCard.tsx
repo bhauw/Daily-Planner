@@ -17,10 +17,10 @@ import type { DragEvent } from "react";
 import type { TaskItem } from "../contract";
 import { presentationFor, Tag, Button } from "../contract";
 import type { BlockProposal, MoveProposal } from "./machine";
-import { statusLabel } from "./machine";
+import { LOCAL_ONLY_TASKS, statusLabel } from "./machine";
 import { describeBlock, linkedBlockFor } from "./data";
 import { formatDueDate } from "./routing";
-import { ClockIcon, GripIcon, LinkIcon } from "./icons";
+import { ChevronIcon, ClockIcon, GripIcon, LinkIcon } from "./icons";
 
 interface TaskCardProps {
   task: TaskItem;
@@ -28,6 +28,8 @@ interface TaskCardProps {
   lists: string[];
   currentList: string;
   pendingMove: MoveProposal | null;
+  /** An approved move that could not be written — shown, so the approval does not vanish. */
+  approvedMove?: MoveProposal | null;
   blocks: BlockProposal[];
   onProposeMove: (toList: string) => void;
   onBlockTime: () => void;
@@ -41,6 +43,7 @@ export function TaskCard({
   lists,
   currentList,
   pendingMove,
+  approvedMove = null,
   blocks,
   onProposeMove,
   onBlockTime,
@@ -65,7 +68,13 @@ export function TaskCard({
 
       <div className="task__body">
         <div className="task__top">
-          <Tag label={p.tag} colorVar={p.inkVar} />
+          {/*
+           * Tag sets its colour inline (style={{ color }}), so the CSS opacity that used to
+           * dim .task--done reached it too — and dropped it below 4.5:1. Muted to --text-2
+           * here instead: same contrast floor as an active tag's ink, still visibly quieter
+           * than the category colour.
+           */}
+          <Tag label={p.tag} colorVar={task.done ? "var(--text-2)" : p.inkVar} />
           <span className="num task__due">
             {task.done ? "Done" : dueLabel ?? "No due date"}
           </span>
@@ -105,36 +114,57 @@ export function TaskCard({
           </div>
         )}
 
-        {!task.done && (
-          <div className="task__actions">
-            <Button size="sm" variant="default" icon={<ClockIcon />} onClick={onBlockTime}>
-              Block time
-            </Button>
-            {otherLists.length > 0 && (
-              <label className="task__move">
-                <span className="sr-only">Propose moving “{task.title}” to another list</span>
-                <select
-                  className="task__move-select"
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) onProposeMove(e.target.value);
-                    e.target.value = "";
-                  }}
-                >
-                  <option value="" disabled>
-                    Move to…
-                  </option>
-                  {otherLists.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+        {approvedMove && !pendingMove && (
+          <div className="task__proposal" role="status">
+            <span className="task__proposal-text">
+              Move → <strong>{approvedMove.toList}</strong>
+            </span>
+            <span className="task__proposal-status">{LOCAL_ONLY_TASKS}</span>
           </div>
         )}
       </div>
+
+      {/* Outside the body so the row can use the grip column's width too. */}
+      {!task.done && (
+        <div className="task__actions">
+          {/* Named for its task: eight identical "Block time" buttons told a screen reader
+              nothing about which one it was on. */}
+          <Button
+            size="sm"
+            variant="default"
+            icon={<ClockIcon />}
+            aria-label={`Block time for ${task.title}`}
+            onClick={onBlockTime}
+          >
+            Block time
+          </Button>
+          {otherLists.length > 0 && (
+            <label className="task__move">
+              <span className="sr-only">Propose moving “{task.title}” to another list</span>
+              <select
+                className="task__move-select"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) onProposeMove(e.target.value);
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  Move to…
+                </option>
+                {otherLists.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <span className="task__move-caret" aria-hidden="true">
+                <ChevronIcon dir="down" size={12} />
+              </span>
+            </label>
+          )}
+        </div>
+      )}
     </div>
   );
 }

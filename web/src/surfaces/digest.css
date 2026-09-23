@@ -3,45 +3,33 @@
  * leading, and rows that open in place.
  */
 
+/*
+ * One reading column, one scroller, and a pinned header.
+ *
+ * The inbox and the day's load used to be two nested scroll panes, the load capped at 40% of the
+ * surface. At every window size that cap landed mid-row, so the inbox pane ended with a reply
+ * ("Reply — Deloitte recruiter") sliced in half — it looked broken, not bounded. The whole surface
+ * scrolls as one now. The header is sticky, so the date and the summary line — the two things
+ * worth still seeing while deciding whether a reply can wait — stay put while you read.
+ */
 .digest {
   height: 100%;
   min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
-/*
- * The mail list is its own scroll region, and the header is not in it.
- *
- * This was one scroller for the whole surface, so reading down the inbox pushed the date and
- * the workload line off the top — the two things worth still being able to see while deciding
- * whether a reply can wait. Three bands now: a pinned header, the list, and the day's load.
- *
- * `min-height: 0` on both scrollers is load-bearing. A flex child's default minimum is its
- * content, so without it neither pane shrinks and the page grows a scrollbar of its own — which
- * is exactly the behaviour being removed.
- */
 .digest__mail {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding: var(--space-12) var(--space-12) var(--space-10);
   max-width: 720px;
   width: 100%;
 }
 
-/*
- * The day's load. Bounded so a long inbox cannot push it off-screen and a long schedule cannot
- * squeeze the inbox out: it takes at most 40% of the surface and scrolls within that.
- */
+/* The day's load: an ordinary band under the inbox, divided by a hairline. */
 .digest__load {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 40%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding: 0 var(--space-12) var(--space-12);
   max-width: 720px;
   width: 100%;
@@ -49,7 +37,10 @@
 }
 
 .digest__head {
-  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
   padding: var(--space-12) var(--space-12) var(--space-10);
   max-width: 720px;
   width: 100%;
@@ -58,7 +49,7 @@
 
 .digest__title {
   margin-top: var(--space-3);
-  font-size: var(--text-3xl);
+  font-size: var(--title-page);
   font-weight: var(--weight-semibold);
   letter-spacing: -0.015em;
   line-height: var(--leading-tight);

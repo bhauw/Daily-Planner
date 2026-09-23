@@ -96,6 +96,47 @@ describe("nothing sends without the review step", () => {
     expect(ui.text()).toContain("Sent");
   });
 
+  // The shell drops the answered message from every list the moment the send lands, instead of
+  // leaving it there until a full reload — so the composer says which message it answered.
+  it("tells the host which message it answered, once, after the send", async () => {
+    const send = vi.fn().mockResolvedValue({ ok: true, id: "m1", threadId: "t-1" });
+    const onWrote = vi.fn();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(createElement(Composer, { prefill: { ...prefill, answers: "d1" }, send, onClose: () => {}, onWrote }));
+    });
+    const press = async (label: string) => {
+      const b = Array.from(host.querySelectorAll("button")).find((x) => x.textContent?.trim() === label)!;
+      await act(async () => b.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    };
+    await press("Review");
+    await press("Send");
+
+    expect(onWrote).toHaveBeenCalledTimes(1);
+    expect(onWrote).toHaveBeenCalledWith({ kind: "mail", answers: "d1" });
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("warns on the review screen before sending to an address nobody reads", async () => {
+    const send = vi.fn();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(createElement(Composer, { prefill: { ...prefill, to: ["no-reply@accounts.example.com"] }, send, onClose: () => {} }));
+    });
+    const b = Array.from(host.querySelectorAll("button")).find((x) => x.textContent?.trim() === "Review")!;
+    await act(async () => b.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(host.textContent).toMatch(/no-reply@accounts\.example\.com does not accept replies/i);
+    expect(send).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    host.remove();
+  });
+
   it("goes back to editing with the message intact", async () => {
     const send = vi.fn();
     const ui = await mount(send);
@@ -106,6 +147,21 @@ describe("nothing sends without the review step", () => {
     expect(send).not.toHaveBeenCalled();
     const body = ui.host.querySelector("textarea") as HTMLTextAreaElement;
     expect(body.value).toBe("Thanks — Thursday works.");
+  });
+
+  // The write->review swap unmounts the whole form and mounts compose__review in its place;
+  // nothing moved focus onto the new screen, so a keyboard/screen-reader user landed on <body>
+  // with no idea the screen had changed (audit finding #2). The draft-result path just above
+  // already does this correctly (bodyRef.current?.focus()) — review() gets the same treatment.
+  it("moves focus onto the review screen when Review is pressed", async () => {
+    const send = vi.fn();
+    const ui = await mount(send);
+
+    await ui.click("Review");
+
+    const heading = ui.host.querySelector(".compose__title") as HTMLElement;
+    expect(heading.textContent).toBe("Send this?");
+    expect(document.activeElement).toBe(heading);
   });
 });
 
@@ -148,5 +204,71 @@ describe("recipient parsing", () => {
     expect(parseRecipients("a@b.com\nc@d.com")).toEqual(["a@b.com", "c@d.com"]);
     expect(parseRecipients("  a@b.com ,, ")).toEqual(["a@b.com"]);
     expect(parseRecipients("   ")).toEqual([]);
+  });
+});
+
+/*
+ * Drafting used to replace whatever he had typed, silently and with no way back, and the
+ * textarea stayed editable while the request ran — so words typed during it were lost too.
+ */
+describe("drafting over his own words", () => {
+  it("locks the message while writing, then offers Undo back to what he had", async () => {
+    let finish!: (v: { body: string; provider: string }) => void;
+    const draft = vi.fn(() => new Promise<{ body: string; provider: string }>((r) => (finish = r)));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
+        createElement(Composer, {
+          prefill: { ...prefill, body: "My own careful words.", draftFrom: "m1" },
+          send: vi.fn(),
+          draft: draft as never,
+          onClose: () => {},
+        }),
+      );
+    });
+    const textarea = () => host.querySelector("textarea") as HTMLTextAreaElement;
+    const button = (t: string) =>
+      [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === t) as HTMLButtonElement | undefined;
+
+    await act(async () => button("Decline")!.click());
+    expect(textarea().disabled).toBe(true);
+
+    await act(async () => finish({ body: "Thanks, but I can't make it.", provider: "Local" }));
+    expect(textarea().disabled).toBe(false);
+    expect(textarea().value).toBe("Thanks, but I can't make it.");
+
+    await act(async () => button("Undo")!.click());
+    expect(textarea().value).toBe("My own careful words.");
+    expect(button("Undo")).toBeUndefined();
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
+describe("a typed instruction in the composer", () => {
+  it("goes out on the neutral intent, never as an 'accept'", async () => {
+    const draft = vi.fn().mockResolvedValue({ body: "No, thanks.", provider: "Local" });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
+        createElement(Composer, {
+          prefill: { ...prefill, draftFrom: "m1" }, send: vi.fn(), draft, onClose: () => {},
+        }),
+      );
+    });
+    const input = host.querySelector("#draft-instruction") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Politely decline");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const write = [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Write it")!;
+    await act(async () => write.click());
+    expect(draft).toHaveBeenCalledWith({ messageId: "m1", intent: "acknowledge", instruction: "Politely decline" });
+    act(() => root.unmount());
+    host.remove();
   });
 });

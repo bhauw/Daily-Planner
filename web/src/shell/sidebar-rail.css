@@ -15,11 +15,12 @@
 }
 
 .sidebar__sectitle {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-family: var(--eyebrow-font);
+  font-size: var(--eyebrow-size);
+  font-weight: var(--eyebrow-weight);
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
-  color: var(--text-2);
+  color: var(--eyebrow-color);
   padding: var(--space-6) var(--space-5) var(--space-3);
 }
 
@@ -31,19 +32,31 @@
   display: flex;
   align-items: center;
   gap: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  min-height: 34px;
+  padding: var(--space-3) var(--space-5);
+  /*
+   * 40px of visible row, 2px of gap: a 42px pitch, up from 35. The 44px floor is met by the hit
+   * area, which reaches 2px above and below the pill into the gaps — so the rail gains six pixels
+   * a row rather than ten, and the pills themselves stay slim.
+   */
+  min-height: var(--nav-height);
   border-radius: var(--nav-radius);
   font-size: var(--text-base);
   color: var(--nav-fg);
-  margin-bottom: 1px;
+  margin-bottom: var(--space-1);
+  position: relative;
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard),
     color var(--motion-fast) var(--ease-standard);
 }
 
+.nav::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--nav-height) - var(--touch-min)) / 2) 0;
+}
+
 .nav:hover {
-  background: var(--surface);
+  background: var(--surface-hover);
   color: var(--text);
 }
 
@@ -63,4 +76,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * The "Shortcuts" row: a <button>, not a link — it opens a dialog, it goes nowhere. Styled as a
+ * rail row so it is findable, but quieter, because it is a reference and not a place.
+ */
+.nav--quiet {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  text-align: left;
+}
+
+.nav__key {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  line-height: 16px;
 }

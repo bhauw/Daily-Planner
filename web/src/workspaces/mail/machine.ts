@@ -29,15 +29,21 @@ export function initialState(subject: string, body: string): DraftState {
   return { status: "proposed", subject, body, approvalRevoked: false };
 }
 
-/** Editing the subject. Any payload change can revoke an approval. */
+/**
+ * Editing the subject. Any payload change can revoke an approval.
+ *
+ * A rejected draft is refused here, before the copy: `applyEdit` only sees the already-edited
+ * copy, so leaving the check to it returned that copy — still `rejected`, but with a payload
+ * nobody reviewed. The UI disables the fields, but the machine is the invariant, not the UI.
+ */
 export function editSubject(s: DraftState, subject: string): DraftState {
-  if (subject === s.subject) return s;
+  if (subject === s.subject || s.status === "rejected") return s;
   return applyEdit({ ...s, subject });
 }
 
 /** Editing the body. Any payload change can revoke an approval. */
 export function editBody(s: DraftState, body: string): DraftState {
-  if (body === s.body) return s;
+  if (body === s.body || s.status === "rejected") return s;
   return applyEdit({ ...s, body });
 }
 

@@ -5,12 +5,12 @@
  * layout to collapse. Colour comes only from the shared category tokens.
  */
 
-import type { DragEvent } from "react";
+import type { CSSProperties, DragEvent } from "react";
 import type { TaskItem, TaskList } from "../contract";
 import { ColumnHeader, EmptyState } from "../contract";
 import { TaskCard } from "./TaskCard";
 import type { ProposalState } from "./machine";
-import { blocksFor, pendingMoveFor } from "./machine";
+import { approvedMoveFor, blocksFor, pendingMoveFor } from "./machine";
 import { listColorVar } from "./routing";
 
 interface ListColumnsProps {
@@ -35,45 +35,48 @@ export function ListColumns({
   const listNames = lists.map((l) => l.name);
 
   return (
-    <div className="tasklists" role="list" aria-label="Task lists">
+    <ul
+      className="tasklists"
+      aria-label="Task lists"
+      // The column count drives the grid and the board's minimum width (tasks.css).
+      style={{ "--list-count": lists.length } as CSSProperties}
+    >
       {lists.map((list) => {
         const open = list.items.filter((i) => !i.done).length;
         return (
-          <section
-            className="tasklist"
-            role="listitem"
-            key={list.name}
-            aria-label={`${list.name}, ${open} open`}
-          >
-            <div className="tasklist__accent" style={{ background: listColorVar(list.name) }} />
-            <ColumnHeader eyebrow="List" title={list.name} count={String(open)} />
-            <div className="tasklist__body scroll-y">
-              {list.items.length === 0 ? (
-                <EmptyState
-                  title="Nothing here yet"
-                  detail={`Capture a task and it can route to ${list.name}.`}
-                />
-              ) : (
-                list.items.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    day={day}
-                    lists={listNames}
-                    currentList={list.name}
-                    pendingMove={pendingMoveFor(state, task.id)}
-                    blocks={blocksFor(state, task.id)}
-                    onProposeMove={(toList) => onProposeMove(task, list.name, toList)}
-                    onBlockTime={() => onBlockTime(task, list.name)}
-                    onResolve={onResolve}
-                    onDragStart={(e) => onDragStartTask(task, list.name, e)}
+          <li className="tasklist__item" key={list.name}>
+            <section className="tasklist" aria-label={`${list.name}, ${open} open`}>
+              <div className="tasklist__accent" style={{ background: listColorVar(list.name) }} />
+              <ColumnHeader eyebrow="List" title={list.name} count={String(open)} />
+              <div className="tasklist__body scroll-y">
+                {list.items.length === 0 ? (
+                  <EmptyState
+                    title="Nothing here yet"
+                    detail={`Capture a task and it can route to ${list.name}.`}
                   />
-                ))
-              )}
-            </div>
-          </section>
+                ) : (
+                  list.items.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      day={day}
+                      lists={listNames}
+                      currentList={list.name}
+                      pendingMove={pendingMoveFor(state, task.id)}
+                      approvedMove={approvedMoveFor(state, task.id)}
+                      blocks={blocksFor(state, task.id)}
+                      onProposeMove={(toList) => onProposeMove(task, list.name, toList)}
+                      onBlockTime={() => onBlockTime(task, list.name)}
+                      onResolve={onResolve}
+                      onDragStart={(e) => onDragStartTask(task, list.name, e)}
+                    />
+                  ))
+                )}
+              </div>
+            </section>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }

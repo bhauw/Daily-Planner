@@ -46,12 +46,15 @@ export interface BlockProposal extends Base {
 export interface CaptureProposal extends Base {
   kind: "capture";
   text: string;
+  /** "" until the person picks one, when routing found no clear list (see needsListChoice). */
   listName: string;
   category: Category;
   due: string | null; // date only
   reasons: string[];
   needsCalendar: boolean;
   needsEmail: boolean;
+  /** Routing found no clear list; approval waits until the person picks one. */
+  needsListChoice: boolean;
 }
 
 export type Proposal = MoveProposal | BlockProposal | CaptureProposal;
@@ -63,7 +66,9 @@ export interface ProposalState {
 export type ProposalAction =
   | { type: "add"; proposal: Proposal }
   | { type: "resolve"; id: string; status: "approved" | "rejected" }
-  | { type: "remove"; id: string };
+  | { type: "remove"; id: string }
+  /** The person chose (or changed) a capture's list. Category follows the list. */
+  | { type: "pickList"; id: string; listName: string; category: Category };
 
 export const initialProposalState: ProposalState = { proposals: [] };
 
@@ -79,6 +84,14 @@ export function proposalReducer(state: ProposalState, action: ProposalAction): P
       };
     case "remove":
       return { proposals: state.proposals.filter((p) => p.id !== action.id) };
+    case "pickList":
+      return {
+        proposals: state.proposals.map((p) =>
+          p.id === action.id && p.kind === "capture" && p.status === "pending"
+            ? { ...p, listName: action.listName, category: action.category, needsListChoice: false }
+            : p,
+        ),
+      };
   }
 }
 
@@ -99,6 +112,22 @@ export function pendingMoveFor(state: ProposalState, taskId: string): MovePropos
   );
   return p ?? null;
 }
+
+/** The latest approved move for a task, if any — kept on the card, since nothing moved it. */
+export function approvedMoveFor(state: ProposalState, taskId: string): MoveProposal | null {
+  const p = state.proposals.find(
+    (x): x is MoveProposal => x.kind === "move" && x.taskId === taskId && x.status === "approved",
+  );
+  return p ?? null;
+}
+
+/**
+ * What an approved move or capture honestly amounts to. The Google grant is `tasks.readonly`
+ * (DailyPlanner/Sources/DailyPlannerDomain/ApprovedGoogleScopes.swift) and the engine has no
+ * task write route, so approval is recorded here and goes nowhere else. Saying "Approved" and
+ * letting the proposal vanish implied the list in Google had changed.
+ */
+export const LOCAL_ONLY_TASKS = "Approved — saved locally only; Google Tasks is read-only";
 
 /** All block proposals for a task (any status), newest first. */
 export function blocksFor(state: ProposalState, taskId: string): BlockProposal[] {

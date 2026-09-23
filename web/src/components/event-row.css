@@ -11,7 +11,7 @@
 }
 
 .item:hover {
-  background: var(--surface);
+  background: var(--surface-hover);
 }
 
 .item__chip {

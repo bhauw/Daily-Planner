@@ -18,7 +18,7 @@
  * time — the task never does.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import type { Category, PlannerEvent } from "../contract";
 import { Dayline, Button, EmptyState, formatLongDay, presentationFor } from "../contract";
@@ -29,12 +29,18 @@ import {
   chooseGap,
   describePlacement,
   gapsFor,
+  overlapFor,
   placementFor,
   MIN_BLOCK_MIN,
+  minutesOfDay,
   type Gap,
   type Placement,
 } from "./insertion";
 import { ClockIcon, CheckIcon } from "./icons";
+// Reached past the contract on purpose, as mail/BookIt does: the write desk is the one path to
+// the calendar, and a proposal that can become real must go through it rather than grow its own.
+import { useWriteDesk } from "../../compose/WriteDesk";
+import { fromLocalInput } from "../../compose/datetime";
 
 /** The task a compose form is currently proposing a block for. */
 export interface ComposeTarget {
@@ -66,9 +72,11 @@ interface TimeBlockDragProps {
 }
 
 const DURATIONS = [30, 45, 60, 90, 120];
+// Start times step by a quarter hour — fine enough to say "after dinner, 19:15".
+const START_STEP = 15;
 
 /** A proposed/approved block rendered on the dayline as a labelled focus block. */
-function blockEvents(blocks: BlockProposal[]): PlannerEvent[] {
+export function blockEvents(blocks: BlockProposal[]): PlannerEvent[] {
   return blocks
     .filter((b) => b.status !== "rejected")
     .map((b) => ({
@@ -171,13 +179,17 @@ export function TimeBlockDrag({
 
   return (
     <div className="timeblock">
+      {/*
+        * "Block time" names the card's button, not a key, so it is set as a button name rather
+        * than as <kbd>. A <kbd> reads as "press this key", and there is no key called that.
+        */}
       <div className="timeblock__head">
         <div className="timeblock__eyebrow">Focus blocks</div>
         <h3 className="timeblock__title">Block time for a task</h3>
         <p className="timeblock__lede">
           A task keeps only a due date. To give it timed work, place it on the day as a linked focus
           block — drag a card into a gap between two blocks and it takes that gap's time, or press{" "}
-          <kbd className="num">Block time</kbd> on it.
+          <strong className="timeblock__btnref">Block time</strong> on it.
         </p>
       </div>
 
@@ -185,6 +197,7 @@ export function TimeBlockDrag({
         <ComposeForm
           key={`${compose.taskId}-${compose.startMin}-${compose.durationMin}`}
           target={compose}
+          events={events}
           calendars={calendars}
           windowStart={windowStart}
           windowEnd={windowEnd}
@@ -233,8 +246,10 @@ export function TimeBlockDrag({
 
       <section className="timeblock__proposals" aria-label="Proposed focus blocks">
         {active.length === 0 ? (
+          // This section lists PROPOSALS, and it sits directly under a timeline that usually
+          // already has focus blocks on it — "No focus blocks yet" contradicted the screen.
           <EmptyState
-            title="No focus blocks yet"
+            title="No blocks waiting for approval"
             detail="Block time for a dateless task and the proposal lands here for your approval — nothing is written."
           />
         ) : (
@@ -270,6 +285,8 @@ export function TimeBlockDrag({
 
 interface ComposeFormProps {
   target: ComposeTarget;
+  /** Everything already on the day — the schedule plus live proposals — to check against. */
+  events: PlannerEvent[];
   calendars: string[];
   windowStart: number;
   windowEnd: number;
@@ -277,7 +294,7 @@ interface ComposeFormProps {
   onCancel: () => void;
 }
 
-function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCancel }: ComposeFormProps) {
+function ComposeForm({ target, events, calendars, windowStart, windowEnd, onCommit, onCancel }: ComposeFormProps) {
   const [startMin, setStartMin] = useState(target.startMin);
   // The drop's gap decides the opening length; a gap shorter than an hour opens
   // on what it can actually hold rather than on a default that overruns it.
@@ -286,11 +303,24 @@ function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCa
     calendars.includes(target.listName) ? target.listName : calendars[0] ?? target.listName,
   );
 
-  const starts = startOptions(windowStart, windowEnd);
+  // The drop's own start is rarely on a round step (a lecture ends at 10:20), so it is offered
+  // alongside them — a controlled select with no matching option shows its FIRST option, which
+  // made the form claim 09:00 while the preview said 10:20.
+  const starts = startOptions(windowStart, windowEnd, target.startMin);
   // A gap's length is rarely one of the round numbers, so offer it alongside them.
   const durations = durationOptions(target.durationMin);
   const endMin = Math.min(windowEnd, startMin + durationMin);
   const p = presentationFor({ category: target.category, kind: "event" });
+  // Named, not blocked: sometimes a student means to work through a lecture's recording slot.
+  // What must not happen is a double-booking proposed without a word.
+  const clash = overlapFor(events, startMin, endMin);
+
+  // "Block time" opens this form in the aside, some sixteen tab stops after the card. Focus
+  // goes to its first field so the keyboard path does not strand the person on the card.
+  const firstField = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    firstField.current?.focus();
+  }, []);
 
   return (
     <form
@@ -300,6 +330,14 @@ function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCa
         e.preventDefault();
         onCommit(startMin, durationMin, calendar);
       }}
+      onKeyDown={(e) => {
+        // Esc cancels, as any transient form does; the board returns focus to the opener.
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      aria-label={`Focus block for ${target.taskTitle}`}
     >
       <div className="compose__head">
         <div className="compose__eyebrow">Focus block · needs approval</div>
@@ -313,6 +351,7 @@ function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCa
         <label className="compose__field">
           <span>Starts</span>
           <select
+            ref={firstField}
             className="compose__select num"
             value={startMin}
             onChange={(e) => setStartMin(Number(e.target.value))}
@@ -359,6 +398,12 @@ function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCa
       <div className="compose__preview num" aria-live="polite">
         {label(startMin)}–{label(endMin)} · {durationMin} min · {calendar}
       </div>
+      {clash && (
+        <p className="compose__warn" role="alert">
+          ⚠ Overlaps {clash.title} ({label(minutesOfDay(clash.start) ?? startMin)}–
+          {label(minutesOfDay(clash.end) ?? endMin)}). You can still propose it.
+        </p>
+      )}
 
       <div className="compose__actions">
         <Button type="submit" size="sm" variant="primary" icon={<CheckIcon />}>
@@ -377,6 +422,30 @@ function ComposeForm({ target, calendars, windowStart, windowEnd, onCommit, onCa
 function BlockCard({ block, onResolve }: { block: BlockProposal; onResolve: (id: string, status: "approved" | "rejected") => void }) {
   const endMin = block.startMin + block.durationMin;
   const dateLabel = formatLongDay(isoAt(block.day, block.startMin));
+  const desk = useWriteDesk();
+  /*
+   * Approving used to change local state and nothing else — it looked like it worked and then
+   * nothing was on the calendar, which erodes trust in every other button. With a calendar
+   * grant it now opens the scheduler, prefilled with exactly this block; the event exists only
+   * once he presses "Add to calendar" there, and the shell's reload then shows it on the day.
+   *
+   * The instants go through the zone-correct conversion, not `isoAt`: that one hardcodes
+   * −07:00, which is fine for a preview and an hour wrong on a real calendar in standard time.
+   * No calendar is sent: `block.calendar` is a task-list name, not a calendar id.
+   */
+  const start = fromLocalInput(`${block.day}T${label(block.startMin)}`);
+  const end = fromLocalInput(`${block.day}T${label(endMin)}`);
+  const real = desk?.capability.canSchedule === true && start != null && end != null;
+
+  function addToCalendar() {
+    desk!.schedule({
+      title: `Focus — ${block.taskTitle}`,
+      start: start!,
+      end: end!,
+      context: `Focus block for “${block.taskTitle}”. Nothing is added until you press Add to calendar.`,
+    });
+  }
+
   return (
     <article className="blockcard" aria-label={`Focus block for ${block.taskTitle}`}>
       <div className="blockcard__head">
@@ -405,16 +474,26 @@ function BlockCard({ block, onResolve }: { block: BlockProposal; onResolve: (id:
       </dl>
       {block.status === "pending" ? (
         <div className="blockcard__actions">
-          <Button size="sm" variant="primary" onClick={() => onResolve(block.id, "approved")}>
-            Approve
-          </Button>
+          {real ? (
+            <Button size="sm" variant="primary" onClick={addToCalendar}>
+              Add to calendar…
+            </Button>
+          ) : (
+            <Button size="sm" variant="primary" onClick={() => onResolve(block.id, "approved")}>
+              Approve
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={() => onResolve(block.id, "rejected")}>
             Reject
           </Button>
-          <span className="blockcard__hint">Approving keeps it local — nothing is sent this round.</span>
+          <span className="blockcard__hint">
+            {real
+              ? "Opens the event to check — nothing is added until you confirm there."
+              : "This account can’t write to Calendar, so approving keeps it local."}
+          </span>
         </div>
       ) : (
-        <p className="blockcard__hint">Local only — the link would be created when writes are enabled.</p>
+        <p className="blockcard__hint">Local only — this account can’t write it to Calendar.</p>
       )}
     </article>
   );
@@ -428,10 +507,12 @@ function durationOptions(gapMin: number): number[] {
   return out.sort((a, b) => a - b);
 }
 
-function startOptions(windowStart: number, windowEnd: number): number[] {
+/** 15-minute steps across the window, plus the opening start when it is not one of them. */
+function startOptions(windowStart: number, windowEnd: number, opening: number): number[] {
   const out: number[] = [];
-  for (let m = windowStart; m <= windowEnd - 30; m += 30) out.push(m);
-  return out;
+  for (let m = windowStart; m <= windowEnd - MIN_BLOCK_MIN; m += START_STEP) out.push(m);
+  if (!out.includes(opening)) out.push(opening);
+  return out.sort((a, b) => a - b);
 }
 
 /** "09:30" — a wall-clock label for a minutes-from-midnight value. */

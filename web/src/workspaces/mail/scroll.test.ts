@@ -23,7 +23,18 @@ const WORKBENCH = readFileSync(join(HERE, "DraftWorkbench.tsx"), "utf8");
 // Comments are stripped before parsing: a comment sitting directly above a rule
 // otherwise becomes part of the selector text and the rule is never found —
 // which reads as "the declaration is missing" rather than "the parser is wrong".
-const CSS = readFileSync(join(HERE, "mail.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+//
+// `@media … {` openers are dropped too, so a rule inside one is read like any other and its
+// stray closing brace becomes an empty rule the parser skips. The assertions below that care
+// about EVERY window size (the email's line floor) must see the media-query rules as well.
+const CSS = readFileSync(join(HERE, "mail.css"), "utf8")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/@media[^{]*\{/g, "");
+// The "Offer times" picker renders inside the editor pane but is styled in compose.css, because
+// the composer uses it too. Read both so a scroller added there is caught here.
+const COMPOSE_CSS = readFileSync(join(HERE, "../../compose/compose.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const OFFER_TSX = readFileSync(join(HERE, "../../compose/OfferTimes.tsx"), "utf8");
+const APP_CSS = readFileSync(join(HERE, "../../app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 /**
  * Every declaration that applies to `selector`, from all of its rules joined.
@@ -91,30 +102,149 @@ describe("only the thread list scrolls", () => {
    * cursor and the bug was reported as unfixed. Counting is the only assertion that catches
    * that: naming the panes only ever proves the panes are right.
    */
-  it("has exactly ONE scrolling region in the attached workspace", () => {
-    // Split on the selector, not on a comment: comments are stripped before parsing.
-    const attached = CSS.split(".mail--detached")[0];
-    const scrollers = attached.match(/overflow-y:\s*auto/g) ?? [];
-    expect(scrollers).toHaveLength(0); // the thread pane scrolls via .scroll-y, not mail.css
+  it("has exactly ONE scrolling region in the attached workspace, plus the opened email", () => {
+    // Every rule in the file, not the text before the first `.mail--detached`: that split
+    // silently skipped everything declared after the detached block, which is where the
+    // triage and reply rules live — so it counted half the file and called it the whole.
+    //
+    // The thread pane scrolls via .scroll-y, not mail.css. The ONE exception here is the email
+    // body while he has opened it — his call, 2026-09-22 — so exactly one attached rule may
+    // scroll, and it is the open modifier.
+    const scrolling: string[] = [];
+    for (const rule of CSS.split("}")) {
+      const [head, body] = rule.split("{");
+      if (!body || !/overflow-y:\s*auto/.test(body)) continue;
+      const attached = head.split(",").map((x) => x.trim()).filter((x) => !x.includes(".mail--detached"));
+      scrolling.push(...attached);
+    }
+    expect(scrolling).toEqual([".message__body--open"]);
   });
 
   it("does not reintroduce a scroller inside the editor or the context pane", () => {
-    for (const selector of [".ctx__notes-list", ".triage__snippet", ".ctx", ".editor"]) {
+    for (const selector of [".ctx__notes-list", ".message__body", ".message", ".ctx", ".editor", ".reply"]) {
       expect(block(selector), selector).not.toContain("overflow-y: auto");
     }
   });
 
-  it("clamps a long thread preview instead of scrolling it", () => {
+  it("clamps a closed email instead of scrolling it", () => {
     // A hard clip would look like text that simply ended; the clamp shows there is more.
-    const snippet = block(".triage__snippet");
-    expect(snippet).toContain("line-clamp");
-    expect(snippet).toContain("overflow: hidden");
+    const body = block(".message__body");
+    expect(body).toContain("line-clamp");
+    expect(body).toContain("overflow: hidden");
   });
 
+  it("caps the opened email so the reply and the footer stay on screen", () => {
+    expect(block(".message__body--open")).toMatch(/max-height:\s*\d+vh/);
+  });
+
+  /*
+   * Found only by rendering it: a long opened email made the page itself taller than the window,
+   * and every `overflow: hidden` pane then clipped its bottom — Approve / Reject first. Two grid
+   * items were sizing to their content. jsdom cannot see that, so the rules that stop it are
+   * pinned here instead.
+   */
+  it("keeps the page exactly the window, so no pane is taller than the screen", () => {
+    const main = APP_CSS.split("}").find((r) => r.split("{")[0].trim() === ".app__main");
+    expect(main).toContain("min-height: 0");
+    expect(block(".mail")).toContain("grid-template-rows: minmax(0, 1fr)");
+  });
+
+  it("keeps Approve right under a real thread's reply instead of at the bottom of the screen", () => {
+    // "the approve is so far away": the reply stretched to fill the pane and pushed the footer
+    // to the bottom edge. In a real thread it is content-height now.
+    expect(block(".editor > .field--triage")).toContain("flex: 0 1 auto");
+    expect(block(".field--triage .reply")).toContain("flex: 0 1 auto");
+  });
   it("still scrolls as one column when detached into its own window", () => {
     // A narrow detached window scrolls as a page; fixed panes would squeeze the
     // editor into a third of it while the page scrolled anyway.
     expect(block(".mail--detached")).toContain("overflow-y: auto");
     expect(block(".mail--detached .mail__editor-pane")).toContain("overflow: visible");
+  });
+
+  /*
+   * "Offer times" opens a picker inside the middle pane. Five slots as a list would have been the
+   * obvious build and the first thing to need a scroller, so it is counted: no `.offer` rule may
+   * scroll and the component may not opt into `scroll-y`.
+   */
+  it("adds no scroller with the Offer times picker", () => {
+    const offerRules = COMPOSE_CSS.split("}").filter((rule) => {
+      const [head, body] = rule.split("{");
+      return body && head.split(",").some((sel) => sel.trim().startsWith(".offer"));
+    });
+    expect(offerRules.length).toBeGreaterThan(0);
+    for (const rule of offerRules) expect(rule).not.toMatch(/overflow(-y)?:\s*(auto|scroll)/);
+    expect(OFFER_TSX).not.toContain("scroll-y");
+    expect(block(".field--triage .reply--offering .reply__body")).not.toContain("overflow-y: auto");
+  });
+});
+
+/*
+ * The email is the thing he came to read, so it is the one thing that never gives way.
+ *
+ * It did: the email was the only shrinkable element in the middle pane, so on a 13" MacBook
+ * (1280x800) and at 1024x768 it collapsed to 0px and the booking chips painted over the "Email"
+ * label and "Show whole email" — you could not read any email in the workbench. Pinned against
+ * the stylesheet because jsdom has no layout; the screenshots at four sizes are in the commit.
+ */
+describe("the email always gets a readable share of the middle pane", () => {
+  const LINE_FLOOR = 8;
+
+  it("never shrinks the closed email: it is sized by its clamp, not by what is left over", () => {
+    expect(block(".message")).toContain("flex: 0 0 auto");
+    expect(block(".message__body")).toContain("flex: 0 0 auto");
+  });
+
+  it(`clamps to at least ${LINE_FLOOR} lines at every window size`, () => {
+    const clamps = [...block(".message__body").matchAll(/(?:^|[^-])line-clamp:\s*(\d+)/g)].map((m) => Number(m[1]));
+    expect(clamps.length).toBeGreaterThan(0);
+    for (const n of clamps) expect(n).toBeGreaterThanOrEqual(LINE_FLOOR);
+  });
+
+  it(`gives the opened email a floor of ${LINE_FLOOR} lines, so a summary cannot squeeze it to 1px`, () => {
+    const open = block(".message__body--open");
+    expect(open).toMatch(new RegExp(`min-height:\\s*calc\\([^;]*\\*\\s*${LINE_FLOOR}\\)`));
+    expect(open).not.toContain("min-height: 0");
+  });
+
+  it("makes the reply text box, not the email, the part that gives way", () => {
+    // The reply's automatic minimum is its controls plus a one-row box; only the box shrinks.
+    expect(block(".field--triage .reply")).toContain("min-height: 0");
+    expect(block(".reply")).not.toContain("min-content");
+    const box = block(".field--triage .reply__body");
+    expect(box).toMatch(/min-height:\s*\d+px/);
+    expect(box).toMatch(/flex:\s*0 1 \d+px/);
+  });
+
+  it("keeps the reply compact until he uses it, then grows it to a cap", () => {
+    const compact = Number(/flex:\s*0 1 (\d+)px/.exec(block(".field--triage .reply__body"))?.[1]);
+    const grown = Number(/flex-basis:\s*(\d+)px/.exec(block(".field--triage .reply--open .reply__body"))?.[1]);
+    expect(compact).toBeGreaterThan(0);
+    expect(compact).toBeLessThanOrEqual(64);
+    expect(grown).toBeGreaterThan(compact);
+    expect(grown).toBeLessThanOrEqual(200);
+  });
+
+  it("puts the booking chips in the flow under the email, never on top of it", () => {
+    const bookit = block(".bookit");
+    expect(bookit).toContain("flex: 0 0 auto");
+    expect(bookit).not.toMatch(/position:\s*(absolute|fixed)/);
+  });
+
+  it("keeps the plan surface's .review margin out of the mail review box", () => {
+    // Found by rendering at 1024x768: that 16px was the difference between fitting and not.
+    expect(block(".editor > .review")).toContain("margin-top: 0");
+  });
+
+  it("keeps the footer to one row, so it never takes a second line of the email's height", () => {
+    expect(block(".editor__actions-note")).toMatch(/flex:\s*1 1/);
+  });
+
+  it("fits all three columns beside the sidebar in a 1024px window", () => {
+    const columns = /grid-template-columns:\s*([^;]+);/.exec(CSS.split("}").find((r) => r.split("{")[0].trim() === ".mail")!)![1];
+    const mins = [...columns.matchAll(/minmax\((\d+)px/g)].map((m) => Number(m[1]));
+    expect(mins).toHaveLength(3);
+    const sidebar = 186; // --sidebar-width in tokens.css
+    expect(sidebar + mins.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(1024);
   });
 });

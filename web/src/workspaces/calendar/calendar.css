@@ -27,13 +27,15 @@
   flex-wrap: wrap;
 }
 .cal__eyebrow {
-  font-size: var(--text-xs);
+  font-family: var(--eyebrow-font);
+  font-size: var(--eyebrow-size);
+  font-weight: var(--eyebrow-weight);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
-  color: var(--text-2);
+  color: var(--eyebrow-color);
 }
 .cal__title {
-  font-size: var(--text-2xl);
+  font-size: var(--title-page);
   font-weight: var(--weight-semibold);
   margin: 0;
 }
@@ -153,10 +155,12 @@
   background: var(--surface);
 }
 .dayhead__dow {
-  font-size: var(--text-2xs);
+  font-size: var(--eyebrow-size);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--text-2);
+  font-family: var(--eyebrow-font);
+  font-weight: var(--eyebrow-weight);
 }
 .dayhead__date {
   font-family: var(--font-mono);
@@ -169,6 +173,9 @@
   display: grid;
   grid-template-columns: var(--dayline-gutter) repeat(7, 1fr);
   position: relative;
+  /* The hour labels are centred on their line, so the first one ("7 AM") hung half above the
+     grid and was cut by the sticky day header; the last hung half below. Room for both. */
+  margin-block: var(--space-4);
 }
 .week__gutter {
   position: relative;
@@ -231,7 +238,10 @@
   gap: 1px;
   overflow: hidden;
   text-align: left;
-  padding: var(--space-2) var(--space-4);
+  /* Tight leading and 2px block padding so time + title + badge fit a 60-minute block at the
+     week zoom (48px). At normal leading they needed ~56px and "movable" was cut in half. */
+  padding: var(--space-1) var(--space-4);
+  line-height: var(--leading-tight);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
@@ -263,6 +273,7 @@ button.cal-blk {
 }
 
 .cal-blk__time {
+  line-height: var(--leading-tight);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-2xs);
@@ -277,9 +288,9 @@ button.cal-blk {
   text-overflow: ellipsis;
 }
 .cal-blk__badge {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  letter-spacing: 0.03em;
+  line-height: var(--leading-tight);
   color: var(--text-2);
 }
 .cal-blk--flex {
@@ -311,6 +322,12 @@ button.cal-blk {
   border-left: 3px dashed var(--accent);
   background: var(--accent-soft);
 }
+.cal-blk__ghostactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
 
 /* ================= MONTH GRID ================= */
 .month {
@@ -323,11 +340,13 @@ button.cal-blk {
   margin-bottom: var(--space-3);
 }
 .month__dow span {
-  font-size: var(--text-2xs);
+  font-size: var(--eyebrow-size);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--text-2);
   text-align: center;
+  font-family: var(--eyebrow-font);
+  font-weight: var(--eyebrow-weight);
 }
 .month__grid {
   display: grid;
@@ -426,10 +445,12 @@ button.cal-blk {
   gap: var(--space-5);
 }
 .panel__head {
-  font-size: var(--text-xs);
+  font-size: var(--eyebrow-size);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--text-2);
+  font-family: var(--eyebrow-font);
+  font-weight: var(--eyebrow-weight);
 }
 .legend {
   display: flex;
@@ -529,10 +550,12 @@ button.cal-blk {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
-  font-size: var(--text-2xs);
+  font-size: var(--eyebrow-size);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--accent-text);
+  font-family: var(--eyebrow-font);
+  font-weight: var(--eyebrow-weight);
 }
 .proposal__diff {
   display: grid;
@@ -546,10 +569,12 @@ button.cal-blk {
   gap: var(--space-2);
 }
 .diffcol__label {
-  font-size: var(--text-2xs);
+  font-size: var(--eyebrow-size);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--text-2);
+  font-family: var(--eyebrow-font);
+  font-weight: var(--eyebrow-weight);
 }
 .diffcol__time {
   font-family: var(--font-mono);
@@ -680,13 +705,15 @@ button.cal-blk {
   color: var(--text-2);
 }
 .slot__tag {
-  font-size: var(--text-2xs);
+  font-size: var(--eyebrow-size);
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   color: var(--text-2);
+  font-family: var(--eyebrow-font);
+  font-weight: var(--eyebrow-weight);
 }
 .slot__tag--fallback {
   color: var(--warn);
@@ -790,12 +817,25 @@ button.cal-blk {
   color: var(--text-2);
   line-height: var(--leading-normal);
 }
+/*
+ * Measured at 13×13 CSS px (need >= 24×24 — WCAG 2.5.8 Target Size). The row now holds a
+ * 24px-tall hit area and the box itself is sized up toward that floor, rather than leaving the
+ * native checkbox at its intrinsic ~13px.
+ */
 .excluded-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  min-height: 24px;
   font-size: var(--text-sm);
   color: var(--text-2);
+}
+
+.excluded-toggle__box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--accent);
 }
 
 /* ---- Detached: single column, side panels stack under the main view ---- */

@@ -308,6 +308,9 @@ public final class EngineHost: NSObject, NSApplicationDelegate {
             // The same CLI summarises one — but only when asked, on its own route.
             mailBodyReader: mail,
             summarizer: replyWriter,
+            // Drafts are signed with the Mac account's first name: it is his, it is already on
+            // this machine, and it means there is no setting to forget to fill in.
+            signOffName: NSFullUserName().split(separator: " ").first.map(String.init),
             capability: capability
         )
     }

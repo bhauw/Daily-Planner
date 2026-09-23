@@ -326,7 +326,7 @@ export interface Draft {
 export type MailBand = "urgent" | "ordinary";
 
 /** The four overrides, plus the ordinary case. */
-export type MailReason = "security" | "interview" | "deadline" | "obligation" | "category";
+export type MailReason = "security" | "interview" | "deadline" | "obligation" | "custom" | "category";
 
 export interface DraftsResponse {
   drafts: Draft[];

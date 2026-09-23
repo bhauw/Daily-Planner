@@ -50,12 +50,12 @@ export function presentationFor(event: Pick<PlannerEvent, "category" | "kind">):
     case "personal":
       return present("Personal", "PERSONAL", "var(--cat-personal)", "var(--cat-personal-ink)");
     case "commute":
-      return present("Commute", "COMMUTE", "var(--cat-commute)");
+      return present("Commute", "COMMUTE", "var(--cat-commute)", "var(--cat-neutral-ink)");
     case "work":
-      return present("Work", "WORK", "var(--cat-work)");
+      return present("Work", "WORK", "var(--cat-work)", "var(--cat-neutral-ink)");
     case "other":
     default:
-      return present("Other", "OTHER", "var(--cat-other)");
+      return present("Other", "OTHER", "var(--cat-other)", "var(--cat-neutral-ink)");
   }
 }
 

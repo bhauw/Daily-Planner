@@ -20,7 +20,8 @@ import {
   type MoveEventRequest,
 } from "../api/client";
 import { addMinutesToInput, fromLocalInput, minutesBetweenInputs, toLocalInput } from "./datetime";
-import type { SchedulePrefill } from "./types";
+import type { SchedulePrefill, Written } from "./types";
+import { conflictFor } from "../workspaces/calendar/scheduling";
 
 type Phase = "edit" | "creating" | "created";
 
@@ -34,7 +35,7 @@ interface SchedulerProps {
   move?: (request: MoveEventRequest) => Promise<CreateEventResponse>;
   onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
-  onWrote?: () => void;
+  onWrote?: (written: Written) => void;
 }
 
 const QUICK_MINUTES = [30, 60, 90, 120];
@@ -64,6 +65,16 @@ export function Scheduler({ prefill, create, move, onClose, onBusyChange, onWrot
     if (minutes == null || minutes <= 0) return "The end has to be after the start.";
     return null;
   }, [moving, title, start, end, minutes]);
+
+  // Checked against the day as the times change. It does not disable the button — a student
+  // may mean to skip a lecture — but it is said before the press and again after it, so a move
+  // onto a class never ends on a clean "Moved".
+  const conflict = useMemo(() => {
+    const startISO = fromLocalInput(start);
+    const endISO = fromLocalInput(end);
+    if (!startISO || !endISO || !prefill.busy) return null;
+    return conflictFor(prefill.busy, startISO, endISO, target?.eventId);
+  }, [start, end, prefill.busy, target?.eventId]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -95,7 +106,7 @@ export function Scheduler({ prefill, create, move, onClose, onBusyChange, onWrot
       setCreated(result);
       setPhase("created");
       onBusyChange?.(false);
-      onWrote?.();
+      onWrote?.({ kind: "event" });
     } catch (failure) {
       setPhase("edit");
       onBusyChange?.(false);
@@ -115,6 +126,7 @@ export function Scheduler({ prefill, create, move, onClose, onBusyChange, onWrot
         <div className="compose__donemark" aria-hidden="true">✓</div>
         <h2 className="compose__donetitle">{moving ? "Moved" : "On your calendar"}</h2>
         <p className="compose__donedetail">{title.trim()}</p>
+        {conflict && <p className="compose__conflict">⚠ {conflict}</p>}
         <div className="compose__actions">
           {created.htmlLink && (
             <Button onClick={() => window.open(created.htmlLink!, "_blank", "noopener,noreferrer")}>
@@ -213,6 +225,7 @@ export function Scheduler({ prefill, create, move, onClose, onBusyChange, onWrot
         </>
       )}
 
+      {conflict && <p className="compose__conflict" role="alert">⚠ {conflict}</p>}
       {error && <p className="compose__error" role="alert">{error}</p>}
 
       <div className="compose__actions">
@@ -220,7 +233,17 @@ export function Scheduler({ prefill, create, move, onClose, onBusyChange, onWrot
         <span className="compose__spacer" />
         {problem && <span className="compose__hint">{problem}</span>}
         <Button variant="primary" type="submit" disabled={busy || problem != null}>
-          {moving ? (busy ? "Moving…" : "Move it") : busy ? "Adding…" : "Add to calendar"}
+          {moving
+            ? busy
+              ? "Moving…"
+              : conflict
+              ? "Move anyway"
+              : "Move it"
+            : busy
+            ? "Adding…"
+            : conflict
+            ? "Add anyway"
+            : "Add to calendar"}
         </Button>
       </div>
     </form>

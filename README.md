@@ -2,9 +2,9 @@
 
 > A native macOS daily planning app with a local web UI, safety boundaries, and synthetic test fixtures.
 
-**Public snapshot:** `0.2.1`
+**Public snapshot:** `0.3.0`
 
-**Project status:** Between phases. Phase One is complete, and Phase Two is actively being built. This snapshot adds mail-body retrieval and rendering while the offline safety foundation remains the release gate.
+**Project status:** Between phases. Phase One is complete, and Phase Two is actively being built. This snapshot adds local assistant reply generation, richer mail and task workflows, and an accessibility-focused front-end pass while the offline safety foundation remains the release gate.
 
 If you build on this project, please credit **bhauw/Daily-Planner** and link back to this repository.
 
@@ -43,6 +43,10 @@ The approved M2A plan authorizes the offline Google read-only foundation. Live G
 - Added user-made topic colors and task placement between existing schedule blocks.
 - Added bounded mail-body retrieval, sanitization, and an in-pane message view.
 - Extended the Swift/TypeScript contract for mail-body routes and assistant-backed reply flows.
+- Added local assistant-backed reply generation with bounded prompts, process timeouts, and explicit approval before sending.
+- Added task-board interactions, drag/insertion workflows, quick capture coverage, and richer task navigation.
+- Added accessibility improvements for landmarks, headings, focus transitions, contrast, controls, and narrow viewports.
+- Added focused front-end tests for mail, task, accessibility, and responsive-layout paths.
 
 ### Partially Finished
 
@@ -52,11 +56,13 @@ The approved M2A plan authorizes the offline Google read-only foundation. Live G
 - Live provider content remains behind the connection boundary and is not used by automated tests.
 - The reply-drafting workflow still requires an explicitly configured assistant and user approval before any external action.
 - Mail-body retrieval is read-only and remains bounded by provider, route, and content-size policies.
+- Assistant generation remains local/configuration-dependent; generated text is still reviewable and is never sent automatically.
 - Packaging and release automation remain local development workflows rather than hosted CI.
+- The current CalendarWorkspace integration tests need a follow-up alignment pass for drag and availability selectors; the production build succeeds while those five cases remain open.
 
 ### Next Steps
 
-1. Finish focused tests for mail-body rendering, reply drafting, and state transitions.
+1. Finish the remaining integration checks for assistant generation and mail-body rendering.
 2. Complete the user-authorized live read-only canary without recording credentials or provider content.
 3. Improve setup and local verification documentation using synthetic examples only.
 4. Revisit sandboxed app/helper isolation after the local-v1 architecture is stable.

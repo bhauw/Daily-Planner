@@ -17,11 +17,27 @@
   color: #fff;
 }
 
+/*
+ * The category tag. A quiet label, not a second colour bar: sentence-case sans on a faint tint of
+ * its own ink, no outline. It was an outlined all-caps mono chip, which made five of them in a
+ * list the loudest thing on Today and made mono stop meaning "numeral".
+ *
+ * The data carries the tag upper-case ("CAREER"); sentence case is applied here, so the contract
+ * does not change. The tint is --tag-tint of the ink over whatever surface the tag sits on;
+ * contrast.test.ts checks every category ink against that tint on every depth.
+ */
 .tag {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.04em;
-  padding: 1px var(--space-3);
-  border-radius: var(--radius-sm);
-  border: 1px solid currentColor;
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, currentColor var(--tag-tint), transparent);
+}
+.tag::first-letter {
+  text-transform: uppercase;
 }

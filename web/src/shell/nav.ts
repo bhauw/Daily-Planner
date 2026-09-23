@@ -10,12 +10,14 @@ import {
   DigestIcon,
   FocusIcon,
   MailIcon,
+  PlanIcon,
   SettingsIcon,
   TasksIcon,
   TodayIcon,
 } from "./icons";
 
 export type RouteId =
+  | "plan"
   | "today"
   | "focus"
   | "digest"
@@ -46,6 +48,8 @@ export const NAV: NavSection[] = [
   {
     title: "Plan",
     items: [
+      // Above Today: it is the thing to do before the day starts, and Today is what it produces.
+      { id: "plan", label: "Plan my day", path: "/plan", icon: PlanIcon },
       { id: "today", label: "Today", path: "/", icon: TodayIcon },
       { id: "focus", label: "Focus", path: "/focus", icon: FocusIcon },
       { id: "digest", label: "Digest", path: "/digest", icon: DigestIcon },
